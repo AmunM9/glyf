@@ -2,7 +2,7 @@
 // segmentación → deskew → vectorización → fuente válida. `npm run selfcheck`.
 import assert from 'node:assert';
 import type { Binarized } from '../lib/preprocess';
-import { estimateSkew, otsu, removeRuledLines, rotateGray } from '../lib/preprocess';
+import { estimateSkew, otsu, removeGridLines, rotateGray } from '../lib/preprocess';
 import { segmentSheet } from '../lib/segment';
 import { buildGlyfFont, type GlyphSource } from '../lib/buildFont';
 import opentype from 'opentype.js';
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   const iBox = seg[0].boxes[1];
   assert.ok(iBox.h >= 38, `el punto de la i no se agrupó (h=${iBox.h})`);
 
-  // --- papel rayado: las rayas no puentean renglones ---
+  // --- papel cuadriculado: rayas h+v se eliminan sin partir las letras ---
   const rbin = makeBin(600, 400);
   rect(rbin, 50, 50, 30, 40);
   rect(rbin, 120, 50, 30, 40);
@@ -76,16 +76,25 @@ async function main(): Promise<void> {
   rect(rbin, 140, 170, 34, 40);
   rect(rbin, 50, 290, 30, 40);
   rect(rbin, 120, 290, 30, 40);
-  rect(rbin, 0, 130, 600, 2); // raya entre fila 1 y 2
-  rect(rbin, 0, 250, 600, 2); // raya entre fila 2 y 3
-  rect(rbin, 0, 70, 600, 2); // raya cruzando la fila 1
-  removeRuledLines(rbin.mask, rbin.width, rbin.height);
+  for (let y = 10; y < 400; y += 60) rect(rbin, 0, y, 600, 2); // rayas horizontales
+  for (let x = 10; x < 600; x += 60) rect(rbin, x, 0, 2, 400); // líneas verticales
+  removeGridLines(rbin.mask, rbin.width, rbin.height);
   const rseg = segmentSheet(rbin, [2, 2, 2]);
   assert.deepStrictEqual(
     rseg.map((r) => r.boxes.length),
     [2, 2, 2],
-    'papel rayado puentea renglones',
+    'la cuadrícula puentea o parte letras',
   );
+  // la letra cruzada por la cuadrícula (x=50 la cruza y=70) sigue siendo UNA caja completa
+  const crossed = rseg[0].boxes[0];
+  assert.ok(crossed.w >= 30 && crossed.h >= 40, `letra cruzada por raya quedó partida (${crossed.w}x${crossed.h})`);
+  // las rayas se fueron: solo pueden quedar motas de los cruces línea×línea
+  // (grosor doble, no "finas"), que el filtro de ruido descarta después
+  let leftover = 0;
+  for (let y = 340; y < 400; y++) {
+    for (let x = 300; x < 600; x++) leftover += rbin.mask[y * rbin.width + x];
+  }
+  assert.ok(leftover < 40, `quedaron ${leftover} píxeles de cuadrícula (esperaba solo motas de cruces)`);
 
   // --- filas puenteadas por un descendente: la escalera de umbrales separa ---
   const bbin = makeBin(600, 300);

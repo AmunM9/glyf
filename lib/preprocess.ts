@@ -67,26 +67,93 @@ export async function preprocess(blob: Blob): Promise<Binarized> {
     rotateGray(gray, w, h, angle);
     mask = binarize(gray, w, h);
   }
-  removeRuledLines(mask, w, h);
+  removeGridLines(mask, w, h);
   return { mask, width: w, height: h };
 }
 
-// Papel rayado: las rayas se binarizan como tinta y puentean los renglones.
-// Borra tramos horizontales de tinta más anchos que cualquier letra.
-// ponytail: umbral 10% del ancho asume raya residual ≤0.25° tras el deskew
-// (paso de 0.5°); mejora = detección morfológica de líneas si aparecen fotos
-// con rayas más torcidas.
-export function removeRuledLines(mask: Uint8Array, w: number, h: number): void {
-  const maxRun = Math.round(w * 0.1);
-  for (let y = 0; y < h; y++) {
-    let runStart = -1;
-    for (let x = 0; x <= w; x++) {
-      const on = x < w && mask[y * w + x] === 1;
-      if (on && runStart < 0) runStart = x;
-      if (!on && runStart >= 0) {
-        if (x - runStart > maxRun) mask.fill(0, y * w + runStart, y * w + x);
-        runStart = -1;
+// Papel rayado o cuadriculado: las rayas se binarizan como tinta, puentean
+// renglones y sueldan letras vecinas en un solo componente. Se eliminan por
+// grosor: un píxel es "de línea" si su grosor perpendicular es ≤ LINE_THICKNESS
+// (las rayas impresas son finas; el lapicero es más grueso) y forma parte de
+// una estructura larga que cruza buena parte de la página. En la intersección
+// raya×letra el grosor es mayor (trazo + raya), así que esos píxeles NO se
+// borran y la letra no se parte. Tolera líneas onduladas: los segmentos finos
+// encadenados siguen conectados aunque la raya driftee de fila.
+// ponytail: techo = rayas tan gruesas como el lapicero o tinta muy fina tipo
+// lápiz duro; mejora = umbral de grosor adaptativo por histograma de grosores.
+const LINE_THICKNESS = 4;
+
+export function removeGridLines(mask: Uint8Array, w: number, h: number): void {
+  eraseThinLines(mask, w, h, true); // rayas horizontales
+  eraseThinLines(mask, w, h, false); // líneas verticales de cuadrícula
+}
+
+function eraseThinLines(mask: Uint8Array, w: number, h: number, horizontal: boolean): void {
+  const size = w * h;
+  // 1) delgadez perpendicular: run de tinta ≤ LINE_THICKNESS en el eje contrario
+  const thin = new Uint8Array(size);
+  const outerLen = horizontal ? w : h; // recorre columnas (h) / filas (v)
+  const innerLen = horizontal ? h : w; // mide el grosor
+  const idxOf = horizontal
+    ? (outer: number, inner: number) => inner * w + outer
+    : (outer: number, inner: number) => outer * w + inner;
+  for (let o = 0; o < outerLen; o++) {
+    let start = -1;
+    for (let i = 0; i <= innerLen; i++) {
+      const on = i < innerLen && mask[idxOf(o, i)] === 1;
+      if (on && start < 0) start = i;
+      if (!on && start >= 0) {
+        if (i - start <= LINE_THICKNESS) {
+          for (let k = start; k < i; k++) thin[idxOf(o, k)] = 1;
+        }
+        start = -1;
       }
+    }
+  }
+
+  // 2) candidatos: segmentos de píxeles finos a lo largo del eje de la línea
+  const alongLen = horizontal ? w : h;
+  const acrossLen = horizontal ? h : w;
+  const idxAlong = horizontal
+    ? (across: number, along: number) => across * w + along
+    : (across: number, along: number) => along * w + across;
+  const minSeg = Math.max(30, Math.round(alongLen * 0.02));
+  const cand = new Uint8Array(size);
+  for (let a = 0; a < acrossLen; a++) {
+    let start = -1;
+    for (let l = 0; l <= alongLen; l++) {
+      const on = l < alongLen && thin[idxAlong(a, l)] === 1;
+      if (on && start < 0) start = l;
+      if (!on && start >= 0) {
+        if (l - start >= minSeg) {
+          for (let k = start; k < l; k++) cand[idxAlong(a, k)] = 1;
+        }
+        start = -1;
+      }
+    }
+  }
+
+  // 3) una raya real acumula mucha tinta fina a lo largo de su fila/columna
+  // (±1 px de ondulación), aunque las letras y los cruces la troceen. Las
+  // barras cortas de una t o una E no llegan ni de lejos al 25% de la página.
+  const minLineInk = Math.round(alongLen * 0.25);
+  const perAcross = new Float64Array(acrossLen);
+  for (let a = 0; a < acrossLen; a++) {
+    let s = 0;
+    for (let l = 0; l < alongLen; l++) s += cand[idxAlong(a, l)];
+    perAcross[a] = s;
+  }
+  for (let a = 0; a < acrossLen; a++) {
+    const windowInk =
+      perAcross[a] + (a > 0 ? perAcross[a - 1] : 0) + (a < acrossLen - 1 ? perAcross[a + 1] : 0);
+    if (windowInk < minLineInk) continue;
+    // fila/columna confirmada como raya: se borra TODO píxel fino en ella,
+    // incluidos los tocones cortos de los bordes y los restos de cruces
+    // (que la otra pasada dejó adelgazados). Lo grueso —el trazo de una
+    // letra que la cruza— sobrevive.
+    for (let l = 0; l < alongLen; l++) {
+      const p = idxAlong(a, l);
+      if (thin[p]) mask[p] = 0;
     }
   }
 }
