@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# [glyf]
 
-## Getting Started
+type from a photo — genera una fuente `.ttf`/`.otf` desde una sola foto de tu letra, 100% en el navegador (sin backend, cero uploads).
 
-First, run the development server:
+## Correr
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
+npm run selfcheck  # verificación ejecutable del pipeline (segmentación → vectorización → fuente)
+npm run build      # build de producción (deployable en Vercel sin config extra)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Cómo usar la cartilla
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Elige idioma (ES/EN) y nombre de la fuente.
+2. Copia la cartilla de la pantalla **a mano** en papel blanco: lapicero/marcador oscuro, letra imprenta, una fila por renglón, en el mismo orden, separando bien cada carácter.
+3. Sube una sola foto (o usa la cámara). La app corrige EXIF, contraste, sombra suave y foto torcida.
+4. Si algún renglón no cuadra, la revisión de glifos te deja reasignar, fusionar, dividir u omitir recortes.
+5. Escribe con tu fuente en la previsualización y descárgala.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+El `espacio` no se dibuja: se genera sintético. El modo "reutilizar tildes" reduce la fila 7 a `á ñ ü` y compone `é í ó ú Ñ` (menos escritura, calidad dependiente de un solo trazo).
 
-## Learn More
+## Licencias
 
-To learn more about Next.js, take a look at the following resources:
+- [opentype.js](https://github.com/opentypejs/opentype.js) — MIT
+- [imagetracerjs](https://github.com/jankovicsandras/imagetracerjs) — dominio público (Unlicense)
+- Si algún día se activa `esm-potrace-wasm` como trazador alternativo, es GPL-2.0.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+La fuente exportada usa contornos CFF (lo que escribe opentype.js); `.ttf` y `.otf` comparten el mismo buffer.

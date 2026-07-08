@@ -1,0 +1,190 @@
+// Verificación ejecutable del pipeline sin frameworks (ponytail):
+// segmentación → deskew → vectorización → fuente válida. `npm run selfcheck`.
+import assert from 'node:assert';
+import type { Binarized } from '../lib/preprocess';
+import { estimateSkew, otsu, removeRuledLines, rotateGray } from '../lib/preprocess';
+import { segmentSheet } from '../lib/segment';
+import { buildGlyfFont, type GlyphSource } from '../lib/buildFont';
+import opentype from 'opentype.js';
+
+// Polyfill mínimo de ImageData para correr vectorize.ts en node.
+class ImageDataPoly {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+  constructor(data: Uint8ClampedArray, width: number, height: number) {
+    this.data = data;
+    this.width = width;
+    this.height = height;
+  }
+}
+Reflect.set(globalThis, 'ImageData', ImageDataPoly);
+
+function makeBin(width: number, height: number): Binarized {
+  return { mask: new Uint8Array(width * height), width, height };
+}
+
+function rect(bin: Binarized, x: number, y: number, w: number, h: number): void {
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) bin.mask[(y + dy) * bin.width + x + dx] = 1;
+  }
+}
+
+function ring(bin: Binarized, x: number, y: number, size: number, thick: number): void {
+  rect(bin, x, y, size, thick);
+  rect(bin, x, y + size - thick, size, thick);
+  rect(bin, x, y, thick, size);
+  rect(bin, x + size - thick, y, thick, size);
+}
+
+async function main(): Promise<void> {
+  // --- otsu: separa una distribución bimodal ---
+  const bimodal = new Uint8ClampedArray(1000);
+  for (let i = 0; i < 1000; i++) bimodal[i] = i < 300 ? 40 + (i % 10) : 210 + (i % 10);
+  const t = otsu(bimodal);
+  // Otsu clasifica [0..t] como clase baja; cualquier t del valle es válido
+  assert.ok(t >= 45 && t < 210, `otsu fuera de rango: ${t}`);
+
+  // --- segmentación: 3 filas, punto de la "i" agrupado con su cuerpo ---
+  const bin = makeBin(600, 400);
+  // fila 1: tres glifos, el segundo es una "i" (punto + cuerpo separados)
+  rect(bin, 50, 50, 30, 40);
+  rect(bin, 120, 50, 8, 8); // punto
+  rect(bin, 120, 66, 8, 24); // cuerpo
+  rect(bin, 180, 50, 30, 40);
+  // fila 2: dos glifos
+  rect(bin, 50, 170, 30, 40);
+  rect(bin, 140, 170, 34, 40);
+  // fila 3: tres glifos
+  rect(bin, 50, 290, 30, 40);
+  rect(bin, 120, 290, 30, 40);
+  rect(bin, 190, 290, 30, 40);
+  const seg = segmentSheet(bin, [3, 2, 3]);
+  assert.deepStrictEqual(
+    seg.map((r) => r.boxes.length),
+    [3, 2, 3],
+    'conteo de glifos por fila',
+  );
+  const iBox = seg[0].boxes[1];
+  assert.ok(iBox.h >= 38, `el punto de la i no se agrupó (h=${iBox.h})`);
+
+  // --- papel rayado: las rayas no puentean renglones ---
+  const rbin = makeBin(600, 400);
+  rect(rbin, 50, 50, 30, 40);
+  rect(rbin, 120, 50, 30, 40);
+  rect(rbin, 50, 170, 30, 40);
+  rect(rbin, 140, 170, 34, 40);
+  rect(rbin, 50, 290, 30, 40);
+  rect(rbin, 120, 290, 30, 40);
+  rect(rbin, 0, 130, 600, 2); // raya entre fila 1 y 2
+  rect(rbin, 0, 250, 600, 2); // raya entre fila 2 y 3
+  rect(rbin, 0, 70, 600, 2); // raya cruzando la fila 1
+  removeRuledLines(rbin.mask, rbin.width, rbin.height);
+  const rseg = segmentSheet(rbin, [2, 2, 2]);
+  assert.deepStrictEqual(
+    rseg.map((r) => r.boxes.length),
+    [2, 2, 2],
+    'papel rayado puentea renglones',
+  );
+
+  // --- filas puenteadas por un descendente: la escalera de umbrales separa ---
+  const bbin = makeBin(600, 300);
+  rect(bbin, 50, 60, 30, 44);
+  rect(bbin, 120, 60, 30, 44);
+  rect(bbin, 50, 180, 30, 44);
+  rect(bbin, 120, 180, 30, 44);
+  rect(bbin, 130, 104, 4, 76); // "descendente" que conecta ambas filas
+  const bseg = segmentSheet(bbin, [2, 2]);
+  assert.strictEqual(bseg.length, 2, 'escalera de umbrales no separó filas puenteadas');
+
+  // --- colapso total: un solo renglón gordo se divide por su valle interno ---
+  const cbin = makeBin(600, 300);
+  rect(cbin, 50, 60, 30, 44);
+  rect(cbin, 120, 60, 30, 44);
+  rect(cbin, 50, 150, 30, 44);
+  rect(cbin, 120, 150, 30, 44);
+  rect(cbin, 200, 60, 50, 134); // bloque ancho que une todo a cualquier umbral
+  const cseg = segmentSheet(cbin, [2, 2]);
+  assert.strictEqual(cseg.length, 2, 'split por valle interno no dividió el renglón doble');
+
+  // --- deskew: líneas a 4° se detectan y se corrigen ---
+  const w = 600;
+  const h = 400;
+  const gray = new Uint8ClampedArray(w * h).fill(255);
+  const tan4 = Math.tan((4 * Math.PI) / 180);
+  for (const y0 of [80, 160, 240, 320]) {
+    for (let x = 20; x < w - 20; x++) {
+      const y = Math.round(y0 + x * tan4);
+      for (let k = 0; k < 4; k++) if (y + k < h) gray[(y + k) * w + x] = 20;
+    }
+  }
+  const maskOf = (g: Uint8ClampedArray) => {
+    const m = new Uint8Array(g.length);
+    for (let i = 0; i < g.length; i++) if (g[i] < 128) m[i] = 1;
+    return m;
+  };
+  const angle = estimateSkew(maskOf(gray), w, h);
+  assert.ok(Math.abs(angle - 4) <= 0.75, `skew estimado ${angle}, esperaba ≈4`);
+  rotateGray(gray, w, h, angle);
+  const after = estimateSkew(maskOf(gray), w, h);
+  assert.ok(Math.abs(after) <= 0.75, `skew tras corregir ${after}, esperaba ≈0`);
+
+  // --- vectorización + fuente: la "o" conserva su contador (winding opuesto) ---
+  const { vectorizeCrop } = await import('../lib/vectorize');
+  const fbin = makeBin(300, 160);
+  ring(fbin, 20, 60, 40, 10); // 'o' con agujero, altura-x = 40
+  rect(fbin, 90, 60, 36, 40); // 'x'
+  rect(fbin, 150, 30, 40, 70); // 'H'
+  rect(fbin, 220, 60, 30, 60); // 'g' con descendente (baja de y=100)
+  const boxes = segmentSheet(fbin, [4])[0].boxes;
+  const chars = ['o', 'x', 'H', 'g'];
+  const sources: GlyphSource[] = [];
+  for (let i = 0; i < boxes.length; i++) {
+    sources.push({ char: chars[i], rowIndex: 0, box: boxes[i], contours: await vectorizeCrop(fbin, boxes[i]) });
+  }
+  const { font } = buildGlyfFont(sources, { familyName: 'SelfCheck', reuseAccents: false });
+
+  const parsed = opentype.parse(font.toArrayBuffer());
+  assert.strictEqual(parsed.glyphs.get(0).name, '.notdef', '.notdef en índice 0');
+  assert.ok((parsed.charToGlyph(' ').advanceWidth ?? 0) > 0, 'space con avance');
+  for (const c of chars) {
+    const g = parsed.charToGlyph(c);
+    assert.ok((g.advanceWidth ?? 0) > 0 && g.path.commands.length > 0, `glifo '${c}' válido`);
+  }
+
+  // winding: la 'o' debe tener 2 subpaths con áreas de signo opuesto
+  const oCmds = parsed.charToGlyph('o').path.commands;
+  const subs: { x: number; y: number }[][] = [];
+  for (const c of oCmds) {
+    if (c.type === 'M') subs.push([]);
+    if ('x' in c && typeof c.x === 'number') subs[subs.length - 1].push({ x: c.x, y: c.y as number });
+  }
+  assert.strictEqual(subs.length, 2, `la 'o' tiene ${subs.length} contornos, esperaba 2`);
+  const area = (pts: { x: number; y: number }[]) => {
+    let a = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const q = pts[(i + 1) % pts.length];
+      a += p.x * q.y - q.x * p.y;
+    }
+    return a / 2;
+  };
+  const [a1, a2] = subs.map(area);
+  assert.ok(a1 * a2 < 0, `winding del contador no invertido (áreas ${a1.toFixed(0)}, ${a2.toFixed(0)})`);
+
+  // 'g' descendente: su path baja por debajo de la línea base (y<0)
+  const gMinY = Math.min(
+    ...parsed
+      .charToGlyph('g')
+      .path.commands.filter((c): c is opentype.PathCommand & { y: number } => 'y' in c && typeof c.y === 'number')
+      .map((c) => c.y),
+  );
+  assert.ok(gMinY < -10, `el descendente de 'g' no baja de la base (minY=${gMinY})`);
+
+  console.log('SELFCHECK OK — segmentación, deskew, winding y fuente válidos');
+}
+
+main().catch((e) => {
+  console.error('SELFCHECK FAIL:', e);
+  process.exit(1);
+});
