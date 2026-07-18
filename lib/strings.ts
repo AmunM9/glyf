@@ -55,7 +55,7 @@ export interface Copy {
 
 export const STR: Record<Lang, Copy> = {
   es: {
-    tagline: 'type from a photo',
+    tagline: 'tu letra, convertida en fuente',
     step1: 'cartilla + foto',
     step2: 'revisión de letras',
     step3: 'escribe y descarga',
@@ -64,7 +64,7 @@ export const STR: Record<Lang, Copy> = {
     back: 'volver',
     sheetTitle: 'cartilla de referencia',
     sheetHint:
-      'Copia esta cartilla a mano: letra imprenta, trazo oscuro, una fila por renglón, en este orden. Luego sube la foto.',
+      'Copia cada letra a mano en una hoja blanca, con lapicero o marcador, igual a como se ve aquí. No agregues nada más. Deja espacio entre letras y entre filas.',
     dropHint: 'arrastra tu foto aquí o',
     browse: 'elegir archivo',
     camera: 'usar cámara',
@@ -73,7 +73,7 @@ export const STR: Record<Lang, Copy> = {
     stageVec: 'vectorización',
     stageBuild: 'construcción',
     reviewHint:
-      'El conteo no coincide en las filas marcadas. Asigna, fusiona, divide u omite cada recorte antes de construir la fuente.',
+      'El conteo no coincide en las filas marcadas. Asigna, fusiona, divide u omite cada recorte antes de construir la fuente. Toca una letra para borrar manchitas o detalles que no quieras.',
     rowLabel: 'fila',
     expected: 'esperados',
     detected: 'detectados',
@@ -113,7 +113,7 @@ export const STR: Record<Lang, Copy> = {
       'pipeline: Otsu → deskew → imagetracer → opentype.js · client-side · zero upload',
   },
   en: {
-    tagline: 'type from a photo',
+    tagline: 'your handwriting, turned into a font',
     step1: 'sheet + photo',
     step2: 'letter review',
     step3: 'type & download',
@@ -122,7 +122,7 @@ export const STR: Record<Lang, Copy> = {
     back: 'back',
     sheetTitle: 'reference sheet',
     sheetHint:
-      'Copy this sheet by hand: print letters, dark stroke, one row per line, in this order. Then upload the photo.',
+      'Copy each letter by hand on a white sheet, with a pen or marker, just like you see it here. Do not add anything else. Leave space between letters and between rows.',
     dropHint: 'drag your photo here or',
     browse: 'choose file',
     camera: 'use camera',
@@ -131,7 +131,7 @@ export const STR: Record<Lang, Copy> = {
     stageVec: 'vectorization',
     stageBuild: 'build',
     reviewHint:
-      'Counts do not match in the marked rows. Assign, merge, split or omit each crop before building the font.',
+      'Counts do not match in the marked rows. Assign, merge, split or omit each crop before building the font. Tap a letter to erase smudges or unwanted marks.',
     rowLabel: 'row',
     expected: 'expected',
     detected: 'detected',
