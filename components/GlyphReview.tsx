@@ -4,6 +4,7 @@ import type { Binarized } from '@/lib/preprocess';
 import { splitBox, unionBox, type Box, type SegRow } from '@/lib/segment';
 import type { Copy } from '@/lib/strings';
 import GlyphEraser from './GlyphEraser';
+import { alignRow } from '@/lib/align';
 
 export interface GlyphPick {
   char: string;
@@ -46,13 +47,15 @@ export default function GlyphReview({
   const [rows, setRows] = useState<RowState[]>(() =>
     segRows.map((sr, ri) => {
       const rowPicks = initialPicks?.filter((p) => p.rowIndex === ri) ?? [];
+      // mejor conjetura: alineación por parecido (los rayones quedan sin asignar
+      // en vez de correr toda la fila)
+      const aligned = rowPicks.length ? null : alignRow(sr.boxes, expectedRows[ri]);
       const items = sr.boxes.map((box, ci) => {
         if (rowPicks.length) {
           const match = rowPicks.find((p) => sameBox(p.box, box));
           return { box, assigned: match ? match.char : null };
         }
-        // mejor conjetura: asignación posicional
-        return { box, assigned: expectedRows[ri][ci] ?? null };
+        return { box, assigned: aligned ? aligned[ci] : null };
       });
       const omitted = rowPicks.length
         ? expectedRows[ri].filter((c) => !items.some((it) => it.assigned === c))

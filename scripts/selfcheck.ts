@@ -76,6 +76,29 @@ async function main(): Promise<void> {
   const iBox = seg[0].boxes[1];
   assert.ok(iBox.h >= 38, `el punto de la i no se agrupó (h=${iBox.h})`);
 
+  // --- alineación DP: el rayón se salta, nada se corre ---
+  {
+    const { alignRow } = await import('../lib/align');
+    // a (x-height 25px), rayón (5px), b (alta 40px) contra esperados [a, b]
+    const boxes = [
+      { x: 10, y: 15, w: 22, h: 25 },
+      { x: 45, y: 30, w: 6, h: 5 },
+      { x: 70, y: 0, w: 24, h: 40 },
+    ];
+    assert.deepStrictEqual(alignRow(boxes, ['a', 'b']), ['a', null, 'b'], 'rayón corrió la fila');
+    // fila completa con mota al inicio: nada se desplaza
+    const row = [{ x: 0, y: 20, w: 4, h: 4 }];
+    const hs = [40, 25, 25, 40, 25]; // B a c d(alta) e → usa alturas coherentes
+    const chars = ['B', 'a', 'c', 'd', 'e'];
+    const expH = [40, 25, 25, 40, 25];
+    for (let i = 0; i < 5; i++) row.push({ x: 20 + i * 30, y: 40 - expH[i], w: 20, h: hs[i] });
+    assert.deepStrictEqual(
+      alignRow(row, chars),
+      [null, ...chars],
+      'mota inicial desplazó la asignación',
+    );
+  }
+
   // --- orientación automática: 90° y 180° se corrigen; la correcta no se toca ---
   {
     const w = 600;

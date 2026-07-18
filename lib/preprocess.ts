@@ -105,8 +105,7 @@ interface Oriented {
   height: number;
 }
 
-const AXIS_RATIO = 1.25; // concentración columnas/filas para decidir "de lado"
-const FLIP_CENTROID = 0.55; // centroide bajo este punto del bloque = al revés
+const AXIS_RATIO = 1.15; // score columnas/filas para decidir "de lado"
 
 export function fixOrientation(
   gray: Uint8ClampedArray,
@@ -114,13 +113,31 @@ export function fixOrientation(
   w: number,
   h: number,
 ): Oriented {
-  const concentration = (proj: Float64Array): number => {
+  // score de eje: concentración en bandas × fracción de valles vacíos dentro
+  // del bloque de tinta (los renglones dejan valles a ~cero; las columnas de
+  // letras de distintas filas casi nunca)
+  const axisScore = (proj: Float64Array): number => {
     let total = 0;
-    for (let i = 0; i < proj.length; i++) total += proj[i];
+    let max = 0;
+    for (let i = 0; i < proj.length; i++) {
+      total += proj[i];
+      if (proj[i] > max) max = proj[i];
+    }
     if (total < 50) return 0;
     let sq = 0;
-    for (let i = 0; i < proj.length; i++) sq += (proj[i] / total) * (proj[i] / total);
-    return sq * proj.length; // 1 = uniforme; mayor = concentrado en bandas
+    let a0 = -1;
+    let a1 = -1;
+    for (let i = 0; i < proj.length; i++) {
+      sq += (proj[i] / total) * (proj[i] / total);
+      if (proj[i] > max * 0.02) {
+        if (a0 < 0) a0 = i;
+        a1 = i;
+      }
+    }
+    let zeros = 0;
+    for (let i = a0; i <= a1; i++) if (proj[i] <= max * 0.02) zeros++;
+    const zeroFrac = a1 > a0 ? zeros / (a1 - a0 + 1) : 0;
+    return sq * proj.length * (1 + 2 * zeroFrac);
   };
 
   const projections = (m: Uint8Array, mw: number, mh: number) => {
@@ -142,7 +159,7 @@ export function fixOrientation(
   const cols = initial.cols;
   let rows = initial.rows;
 
-  if (concentration(cols) > concentration(rows) * AXIS_RATIO) {
+  if (axisScore(cols) > axisScore(rows) * AXIS_RATIO) {
     out = {
       gray: rotateQuarter(out.gray, out.width, out.height),
       mask: rotateQuarter(out.mask, out.width, out.height),
@@ -152,29 +169,50 @@ export function fixOrientation(
     rows = projections(out.mask, out.width, out.height).rows;
   }
 
-  // sentido: centroide vertical de la tinta dentro de su bloque
-  let total = 0;
-  let weighted = 0;
-  let y0 = -1;
-  let y1 = -1;
-  for (let y = 0; y < rows.length; y++) {
-    if (rows[y] > 0) {
-      if (y0 < 0) y0 = y;
-      y1 = y;
-      total += rows[y];
-      weighted += y * rows[y];
+  // sentido: la cartilla es pesada arriba. Se comparan las BANDAS de texto
+  // (tinta media de la primera mitad de renglones vs la última) — mucho más
+  // robusto en fotos reales que el centroide crudo por píxel.
+  let maxRow = 0;
+  for (let y = 0; y < rows.length; y++) if (rows[y] > maxRow) maxRow = rows[y];
+  const thr = maxRow * 0.05;
+  const bands: number[] = [];
+  let acc = -1;
+  for (let y = 0; y <= rows.length; y++) {
+    const on = y < rows.length && rows[y] > thr;
+    if (on) acc = (acc < 0 ? 0 : acc) + rows[y];
+    else if (acc >= 0) {
+      bands.push(acc);
+      acc = -1;
     }
   }
-  if (total > 50 && y1 - y0 > 10) {
-    const rel = (weighted / total - y0) / (y1 - y0);
-    if (rel > FLIP_CENTROID) {
-      out = {
-        gray: rotateHalf(out.gray, out.width, out.height),
-        mask: rotateHalf(out.mask, out.width, out.height),
-        width: out.width,
-        height: out.height,
-      };
+  let flip = false;
+  if (bands.length >= 3) {
+    const half = Math.floor(bands.length / 2);
+    const mean = (a: number[]) => a.reduce((s, v) => s + v, 0) / (a.length || 1);
+    flip = mean(bands.slice(-half)) > mean(bands.slice(0, half)) * 1.2;
+  } else {
+    // pocas bandas: centroide como respaldo
+    let total = 0;
+    let weighted = 0;
+    let y0 = -1;
+    let y1 = -1;
+    for (let y = 0; y < rows.length; y++) {
+      if (rows[y] > 0) {
+        if (y0 < 0) y0 = y;
+        y1 = y;
+        total += rows[y];
+        weighted += y * rows[y];
+      }
     }
+    flip = total > 50 && y1 - y0 > 10 && (weighted / total - y0) / (y1 - y0) > 0.55;
+  }
+  if (flip) {
+    out = {
+      gray: rotateHalf(out.gray, out.width, out.height),
+      mask: rotateHalf(out.mask, out.width, out.height),
+      width: out.width,
+      height: out.height,
+    };
   }
   if (process.env.NODE_ENV !== 'production' && out.width !== w) {
     console.debug('[glyf] orientación corregida');
