@@ -10,6 +10,7 @@
     "selfcheck": "tsx scripts/selfcheck.ts"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "imagetracerjs": "^1.2.6",
     "next": "16.2.10",
     "opentype.js": "^1.3.4",
