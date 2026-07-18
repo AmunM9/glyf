@@ -81,7 +81,7 @@ export default function FontStudio() {
         setFont(result.font);
         setWarnings(result.warnings);
         setProgress(null);
-        setStep(4);
+        setStep(3);
       } catch (e) {
         console.warn('[glyf] finalize', e);
         setProgress(null);
@@ -111,7 +111,7 @@ export default function FontStudio() {
         // eso corre todos los caracteres y arruina la fuente entera.
         setProgress(null);
         setError(mismatched.map((m) => t.errRowShort(m.i + 1, m.found, m.want)).join(' '));
-        setStep(3);
+        setStep(2);
         return;
       }
       await finalize(
@@ -138,7 +138,7 @@ export default function FontStudio() {
     setProgress(null);
   }
 
-  const stepTitles = [t.step1, t.step2, t.step3, t.step4];
+  const stepTitles = [t.step1, t.step2, t.step3];
 
   return (
     <div className="studio">
@@ -179,7 +179,7 @@ export default function FontStudio() {
 
       {step === 1 && (
         <section className="panel" aria-label={t.step1}>
-          <div className="field">
+          <div className="field field-compact">
             <label htmlFor={nameId}>{t.fontNameLabel}</label>
             <input
               id={nameId}
@@ -189,14 +189,6 @@ export default function FontStudio() {
               onChange={(e) => setFamilyName(e.target.value)}
             />
           </div>
-          <button type="button" className="btn btn-primary" onClick={() => setStep(2)}>
-            {t.continue_}
-          </button>
-        </section>
-      )}
-
-      {step === 2 && (
-        <section className="panel" aria-label={t.step2}>
           <ReferenceSheet rows={rows} t={t} />
           <div className="process-zone">
             <LaserField active={progress !== null} />
@@ -233,14 +225,11 @@ export default function FontStudio() {
               <Uploader onFile={handleFile} disabled={progress !== null} t={t} />
             )}
           </div>
-          <button type="button" className="btn" onClick={() => setStep(1)} disabled={progress !== null}>
-            {t.back}
-          </button>
         </section>
       )}
 
-      {step === 3 && bin && segRows && (
-        <section className="panel" aria-label={t.step3}>
+      {step === 2 && bin && segRows && (
+        <section className="panel" aria-label={t.step2}>
           <GlyphReview
             bin={bin}
             segRows={segRows}
@@ -249,7 +238,7 @@ export default function FontStudio() {
             t={t}
             onBack={() => {
               setError(null);
-              setStep(2);
+              setStep(1);
             }}
             onConfirm={(picks) => finalize(bin, picks)}
           />
@@ -261,8 +250,8 @@ export default function FontStudio() {
         </section>
       )}
 
-      {step === 4 && font && (
-        <section className="panel" aria-label={t.step4}>
+      {step === 3 && font && (
+        <section className="panel" aria-label={t.step3}>
           <LivePreview font={font} t={t} />
           {warnings.length > 0 && (
             <details className="warnings">
@@ -289,7 +278,7 @@ export default function FontStudio() {
                 className="btn"
                 onClick={() => {
                   setError(null);
-                  setStep(3);
+                  setStep(2);
                 }}
               >
                 {t.backToReview}

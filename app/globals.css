@@ -161,23 +161,15 @@ main {
   outline-offset: 1px;
 }
 
-.field-inline {
+.field-compact {
   flex-direction: row;
   align-items: baseline;
+  gap: var(--space-2);
   max-width: none;
 }
 
-.field-inline input[type='checkbox'] {
-  accent-color: var(--accent-primary);
-  width: 1rem;
-  height: 1rem;
-}
-
-.tip {
-  display: block;
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-  max-width: 38rem;
+.field-compact input[type='text'] {
+  max-width: 16rem;
 }
 
 /* ---- botones ---- */
@@ -253,12 +245,6 @@ main {
 
 .sheet-row:last-child {
   border-bottom: none;
-}
-
-.sheet-row-num {
-  color: var(--accent-primary);
-  font-size: 0.75rem;
-  min-width: 2ch;
 }
 
 .sheet-char {

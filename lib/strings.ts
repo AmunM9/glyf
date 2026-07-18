@@ -5,10 +5,8 @@ export interface Copy {
   step1: string;
   step2: string;
   step3: string;
-  step4: string;
   langLabel: string;
   fontNameLabel: string;
-  continue_: string;
   back: string;
   sheetTitle: string;
   sheetHint: string;
@@ -58,17 +56,15 @@ export interface Copy {
 export const STR: Record<Lang, Copy> = {
   es: {
     tagline: 'type from a photo',
-    step1: 'idioma y nombre',
-    step2: 'cartilla + foto',
-    step3: 'revisión de glifos',
-    step4: 'escribe y descarga',
+    step1: 'cartilla + foto',
+    step2: 'revisión de letras',
+    step3: 'escribe y descarga',
     langLabel: 'idioma de la cartilla',
     fontNameLabel: 'nombre de la fuente',
-    continue_: 'continuar',
     back: 'volver',
     sheetTitle: 'cartilla de referencia',
     sheetHint:
-      'Escribe en papel blanco, con lapicero/marcador oscuro, en letra imprenta (no cursiva), separando bien cada carácter, una fila por renglón, en el mismo orden. Luego sube una sola foto.',
+      'Copia esta cartilla a mano: letra imprenta, trazo oscuro, una fila por renglón, en este orden. Luego sube la foto.',
     dropHint: 'arrastra tu foto aquí o',
     browse: 'elegir archivo',
     camera: 'usar cámara',
@@ -97,7 +93,7 @@ export const STR: Record<Lang, Copy> = {
     downloadTtf: 'descargar .ttf',
     downloadOtf: 'descargar .otf',
     restart: 'empezar de nuevo',
-    backToReview: 'revisar glifos',
+    backToReview: 'corregir letras',
     eraserTitle: 'limpiar carácter',
     eraserHint: 'Pinta sobre el recorte para borrar imperfecciones (motas, restos de rayas).',
     brushLabel: 'pincel',
@@ -118,17 +114,15 @@ export const STR: Record<Lang, Copy> = {
   },
   en: {
     tagline: 'type from a photo',
-    step1: 'language & name',
-    step2: 'sheet + photo',
-    step3: 'glyph review',
-    step4: 'type & download',
+    step1: 'sheet + photo',
+    step2: 'letter review',
+    step3: 'type & download',
     langLabel: 'sheet language',
     fontNameLabel: 'font name',
-    continue_: 'continue',
     back: 'back',
     sheetTitle: 'reference sheet',
     sheetHint:
-      'Write on white paper with a dark pen/marker, in print letters (not cursive), spacing each character well, one row per line, in this exact order. Then upload a single photo.',
+      'Copy this sheet by hand: print letters, dark stroke, one row per line, in this order. Then upload the photo.',
     dropHint: 'drag your photo here or',
     browse: 'choose file',
     camera: 'use camera',
@@ -157,7 +151,7 @@ export const STR: Record<Lang, Copy> = {
     downloadTtf: 'download .ttf',
     downloadOtf: 'download .otf',
     restart: 'start over',
-    backToReview: 'review glyphs',
+    backToReview: 'fix letters',
     eraserTitle: 'clean character',
     eraserHint: 'Paint over the crop to erase imperfections (specks, leftover line bits).',
     brushLabel: 'brush',

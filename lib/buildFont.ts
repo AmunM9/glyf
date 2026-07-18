@@ -35,7 +35,7 @@ export function buildGlyfFont(sources: GlyphSource[], opts: { familyName: string
   const warnings: string[] = [];
   const byChar = new Map<string, GlyphSource>();
   for (const s of sources) {
-    if (byChar.has(s.char)) warnings.push(`glifo duplicado ignorado: ${s.char}`);
+    if (byChar.has(s.char)) warnings.push(`letra duplicada ignorada: ${s.char}`);
     else byChar.set(s.char, s);
   }
 
@@ -151,7 +151,7 @@ function selfCheck(font: opentype.Font, built: Map<string, Built>, warnings: str
   console.assert(hasSpace, '[glyf] falta el glifo space');
   for (const [char, b] of built) {
     const contours = subpaths(b.path.commands).length;
-    if (contours === 0) warnings.push(`glifo vacío: ${char}`);
+    if (contours === 0) warnings.push(`letra vacía: ${char}`);
     summary.push({ char, advance: b.advance, contours });
   }
   console.table(summary);

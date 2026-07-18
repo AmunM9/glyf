@@ -2,7 +2,15 @@
 // segmentación → deskew → vectorización → fuente válida. `npm run selfcheck`.
 import assert from 'node:assert';
 import type { Binarized } from '../lib/preprocess';
-import { estimateSkew, extractPaper, homography, otsu, removeGridLines, rotateGray } from '../lib/preprocess';
+import {
+  estimateSkew,
+  extractPaper,
+  fixOrientation,
+  homography,
+  otsu,
+  removeGridLines,
+  rotateGray,
+} from '../lib/preprocess';
 import { segmentSheet } from '../lib/segment';
 import { buildGlyfFont, type GlyphSource } from '../lib/buildFont';
 import opentype from 'opentype.js';
@@ -67,6 +75,49 @@ async function main(): Promise<void> {
   );
   const iBox = seg[0].boxes[1];
   assert.ok(iBox.h >= 38, `el punto de la i no se agrupó (h=${iBox.h})`);
+
+  // --- orientación automática: 90° y 180° se corrigen; la correcta no se toca ---
+  {
+    const w = 600;
+    const h = 450;
+    // cartilla "pesada arriba": 4 filas densas + 2 ligeras (como la real)
+    const sheet = makeBin(w, h);
+    for (let ri = 0; ri < 4; ri++) {
+      for (let ci = 0; ci < 10; ci++) rect(sheet, 40 + ci * 52, 40 + ri * 60, 34, 38);
+    }
+    for (let ci = 0; ci < 8; ci++) rect(sheet, 40 + ci * 52, 40 + 4 * 60, 18, 20);
+    for (let ci = 0; ci < 6; ci++) rect(sheet, 40 + ci * 52, 40 + 5 * 60, 10, 10);
+    const grayDummy = new Uint8ClampedArray(w * h);
+
+    const ok = fixOrientation(grayDummy, sheet.mask, w, h);
+    assert.ok(
+      ok.width === w && ok.mask.every((v, i) => v === sheet.mask[i]),
+      'orientación correcta fue modificada',
+    );
+
+    const rot180 = new Uint8Array(w * h);
+    for (let i = 0; i < rot180.length; i++) rot180[i] = sheet.mask[rot180.length - 1 - i];
+    const fixed180 = fixOrientation(new Uint8ClampedArray(w * h), rot180, w, h);
+    assert.ok(
+      fixed180.width === w && fixed180.mask.every((v, i) => v === sheet.mask[i]),
+      'foto al revés (180°) no se corrigió',
+    );
+
+    // 90° horario: (x,y) → (h-1-y, x) en una imagen h×w
+    const rot90 = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) rot90[x * h + (h - 1 - y)] = sheet.mask[y * w + x];
+    }
+    const fixed90 = fixOrientation(new Uint8ClampedArray(w * h), rot90, h, w);
+    assert.ok(
+      fixed90.width === w && fixed90.height === h,
+      `foto de lado (90°) no se enderezó (${fixed90.width}x${fixed90.height})`,
+    );
+    assert.ok(
+      fixed90.mask.every((v, i) => v === sheet.mask[i]),
+      'foto de lado (90°) quedó en orientación equivocada',
+    );
+  }
 
   // --- homografía: identidad para un mapeo rectángulo→rectángulo trivial ---
   const idPts = [

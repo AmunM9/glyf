@@ -61,11 +61,19 @@ export async function preprocess(blob: Blob): Promise<Binarized> {
   // la mesa, el esfero u otros objetos alrededor no contaminen la segmentación
   const paper = extractPaper(gray, w, h);
   gray = paper.gray;
-  const pw = paper.width;
-  const ph = paper.height;
+  let pw = paper.width;
+  let ph = paper.height;
 
   stretchContrast(gray);
   let mask = binarize(gray, pw, ph);
+
+  // orientación mal etiquetada por el giroscopio (EXIF incorrecto): se corrige
+  // sola usando la estructura de la cartilla
+  const fixed = fixOrientation(gray, mask, pw, ph);
+  gray = fixed.gray;
+  mask = fixed.mask;
+  pw = fixed.width;
+  ph = fixed.height;
 
   // las rayas del papel son paralelas al texto: ayudan al deskew, se quitan después
   const angle = estimateSkew(mask, pw, ph);
@@ -76,6 +84,121 @@ export async function preprocess(blob: Blob): Promise<Binarized> {
   }
   removeGridLines(mask, pw, ph);
   return { mask, width: pw, height: ph };
+}
+
+// ---------- orientación automática ----------
+// Corrige fotos giradas 90/180/270° cuando el EXIF vino mal etiquetado.
+// Dos señales de la propia cartilla:
+// 1) Eje: las filas de texto forman bandas horizontales; si la tinta se
+//    concentra más por columnas que por filas, la foto está de lado → 90°.
+// 2) Sentido: la cartilla es "pesada arriba" (4 filas densas de letras arriba;
+//    dígitos, puntuación y acentos, ligeros, abajo); si el centroide de tinta
+//    cae en la mitad inferior del bloque, está al revés → 180°.
+// Umbrales conservadores: ante señal ambigua NO se toca la imagen.
+// ponytail: techo = cartillas incompletas o con dibujos extra que inviertan el
+// peso; mejora = clasificar ascendentes vs descendentes por renglón.
+
+interface Oriented {
+  gray: Uint8ClampedArray;
+  mask: Uint8Array;
+  width: number;
+  height: number;
+}
+
+const AXIS_RATIO = 1.25; // concentración columnas/filas para decidir "de lado"
+const FLIP_CENTROID = 0.55; // centroide bajo este punto del bloque = al revés
+
+export function fixOrientation(
+  gray: Uint8ClampedArray,
+  mask: Uint8Array,
+  w: number,
+  h: number,
+): Oriented {
+  const concentration = (proj: Float64Array): number => {
+    let total = 0;
+    for (let i = 0; i < proj.length; i++) total += proj[i];
+    if (total < 50) return 0;
+    let sq = 0;
+    for (let i = 0; i < proj.length; i++) sq += (proj[i] / total) * (proj[i] / total);
+    return sq * proj.length; // 1 = uniforme; mayor = concentrado en bandas
+  };
+
+  const projections = (m: Uint8Array, mw: number, mh: number) => {
+    const rows = new Float64Array(mh);
+    const cols = new Float64Array(mw);
+    for (let y = 0; y < mh; y++) {
+      for (let x = 0; x < mw; x++) {
+        if (m[y * mw + x]) {
+          rows[y]++;
+          cols[x]++;
+        }
+      }
+    }
+    return { rows, cols };
+  };
+
+  let out: Oriented = { gray, mask, width: w, height: h };
+  const initial = projections(mask, w, h);
+  const cols = initial.cols;
+  let rows = initial.rows;
+
+  if (concentration(cols) > concentration(rows) * AXIS_RATIO) {
+    out = {
+      gray: rotateQuarter(out.gray, out.width, out.height),
+      mask: rotateQuarter(out.mask, out.width, out.height),
+      width: out.height,
+      height: out.width,
+    };
+    rows = projections(out.mask, out.width, out.height).rows;
+  }
+
+  // sentido: centroide vertical de la tinta dentro de su bloque
+  let total = 0;
+  let weighted = 0;
+  let y0 = -1;
+  let y1 = -1;
+  for (let y = 0; y < rows.length; y++) {
+    if (rows[y] > 0) {
+      if (y0 < 0) y0 = y;
+      y1 = y;
+      total += rows[y];
+      weighted += y * rows[y];
+    }
+  }
+  if (total > 50 && y1 - y0 > 10) {
+    const rel = (weighted / total - y0) / (y1 - y0);
+    if (rel > FLIP_CENTROID) {
+      out = {
+        gray: rotateHalf(out.gray, out.width, out.height),
+        mask: rotateHalf(out.mask, out.width, out.height),
+        width: out.width,
+        height: out.height,
+      };
+    }
+  }
+  if (process.env.NODE_ENV !== 'production' && out.width !== w) {
+    console.debug('[glyf] orientación corregida');
+  }
+  return out;
+}
+
+// rotación 90° horaria: la imagen h×w resultante es exacta (sin pérdida)
+function rotateQuarter<T extends Uint8Array | Uint8ClampedArray>(src: T, w: number, h: number): T {
+  const Ctor = src.constructor as new (n: number) => T;
+  const dst = new Ctor(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      dst[x * h + (h - 1 - y)] = src[y * w + x];
+    }
+  }
+  return dst;
+}
+
+function rotateHalf<T extends Uint8Array | Uint8ClampedArray>(src: T, w: number, h: number): T {
+  const Ctor = src.constructor as new (n: number) => T;
+  const dst = new Ctor(w * h);
+  for (let i = 0; i < src.length; i++) dst[src.length - 1 - i] = src[i];
+  return dst;
 }
 
 // ---------- detección del papel (escáner de documentos) ----------

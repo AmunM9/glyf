@@ -7,10 +7,9 @@ export default function ReferenceSheet({ rows, t }: { rows: string[][]; t: Copy 
       <figcaption className="sheet-caption">{t.sheetHint}</figcaption>
       <div className="sheet-rows">
         {rows.map((row, i) => (
+          // sin números de fila: cualquier marca dentro de la "hoja" invita a
+          // copiarla a mano; los renglones punteados ya marcan la estructura
           <div className="sheet-row" key={i}>
-            <span className="sheet-row-num" aria-hidden="true">
-              {String(i + 1).padStart(2, '0')}
-            </span>
             {row.map((c) => (
               <span className="sheet-char" key={c}>
                 {c}
