@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useId, useState } from 'react';
+import Link from 'next/link';
 import type { Font } from 'opentype.js';
 import { getRows, type Lang } from '@/lib/charset';
 import { STR } from '@/lib/strings';
@@ -144,7 +145,9 @@ export default function FontStudio() {
     <div className="studio">
       <header className="studio-header">
         <h1 className="brand">
-          <span className="brand-bracket">[</span>glyf<span className="brand-bracket">]</span>
+          <Link href="/" className="brand-link">
+            <span className="brand-bracket">[</span>glyf<span className="brand-bracket">]</span>
+          </Link>
           <span className="brand-cursor" aria-hidden="true" />
         </h1>
         <p className="tagline">{t.tagline}</p>
