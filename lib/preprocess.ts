@@ -52,23 +52,260 @@ export async function preprocess(blob: Blob): Promise<Binarized> {
   if ('close' in src) src.close();
 
   const { data } = ctx.getImageData(0, 0, w, h);
-  const gray = new Uint8ClampedArray(w * h);
+  let gray: Uint8ClampedArray = new Uint8ClampedArray(w * h);
   for (let i = 0, j = 0; i < gray.length; i++, j += 4) {
     gray[i] = 0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
   }
 
+  // escaneo de documento: recorta al papel y endereza la perspectiva, para que
+  // la mesa, el esfero u otros objetos alrededor no contaminen la segmentación
+  const paper = extractPaper(gray, w, h);
+  gray = paper.gray;
+  const pw = paper.width;
+  const ph = paper.height;
+
   stretchContrast(gray);
-  let mask = binarize(gray, w, h);
+  let mask = binarize(gray, pw, ph);
 
   // las rayas del papel son paralelas al texto: ayudan al deskew, se quitan después
-  const angle = estimateSkew(mask, w, h);
+  const angle = estimateSkew(mask, pw, ph);
   if (process.env.NODE_ENV !== 'production') console.debug('[glyf] skew estimado:', angle);
   if (Math.abs(angle) >= MIN_SKEW_DEG) {
-    rotateGray(gray, w, h, angle);
-    mask = binarize(gray, w, h);
+    rotateGray(gray, pw, ph, angle);
+    mask = binarize(gray, pw, ph);
   }
-  removeGridLines(mask, w, h);
-  return { mask, width: w, height: h };
+  removeGridLines(mask, pw, ph);
+  return { mask, width: pw, height: ph };
+}
+
+// ---------- detección del papel (escáner de documentos) ----------
+// Pipeline clásico de escaneo: reduce la imagen, segmenta el papel (la región
+// clara mayor), extrae sus 4 esquinas y lo endereza con una homografía DLT de
+// 4 puntos. Si no hay un papel detectable con confianza (el papel llena la
+// foto, o la mesa es tan clara como el papel), devuelve la imagen intacta:
+// nunca empeora lo que ya funcionaba.
+// ponytail: segmentación por brillo en vez de Canny+contornos; techo = papel
+// sobre mesa igual de blanca (cae al comportamiento anterior); mejora =
+// detección de bordes + Hough si aparecen esos casos.
+
+export interface GrayImage {
+  gray: Uint8ClampedArray;
+  width: number;
+  height: number;
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+const PAPER_DETECT_SIDE = 400;
+const PAPER_MIN_AREA = 0.2; // el papel debe ocupar ≥20% de la foto
+const PAPER_FULL_FRAME = 0.93; // sobre esto, el papel ES la foto: no recortar
+const PAPER_SOLIDITY = 0.65; // área del componente / área del cuadrilátero
+const PAPER_INSET = 0.015; // recorte del borde del papel (sombra/canto)
+
+export function extractPaper(gray: Uint8ClampedArray, w: number, h: number): GrayImage {
+  const original: GrayImage = { gray, width: w, height: h };
+
+  // 1) versión reducida para detectar rápido
+  const s = Math.max(1, Math.ceil(Math.max(w, h) / PAPER_DETECT_SIDE));
+  const sw = Math.floor(w / s);
+  const sh = Math.floor(h / s);
+  if (sw < 20 || sh < 20) return original;
+  const small = new Uint8ClampedArray(sw * sh);
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) small[y * sw + x] = gray[y * s * w + x * s];
+  }
+
+  // 2) el papel = mayor componente conexo claro
+  const t = otsu(small);
+  const bright = new Uint8Array(sw * sh);
+  for (let i = 0; i < small.length; i++) if (small[i] > t) bright[i] = 1;
+  const comp = largestBrightComponent(bright, sw, sh);
+  if (!comp || comp.area < PAPER_MIN_AREA * sw * sh) return original;
+
+  // 3) esquinas extremas del componente (TL, TR, BR, BL)
+  const { tl, tr, br, bl } = comp;
+  const quadArea =
+    Math.abs(
+      tl.x * tr.y - tr.x * tl.y +
+        tr.x * br.y - br.x * tr.y +
+        br.x * bl.y - bl.x * br.y +
+        bl.x * tl.y - tl.x * bl.y,
+    ) / 2;
+  if (quadArea < PAPER_MIN_AREA * sw * sh) return original;
+  if (comp.area / quadArea < PAPER_SOLIDITY) return original; // no es un rectángulo sólido
+  if (quadArea > PAPER_FULL_FRAME * sw * sh) return original; // el papel llena la foto
+
+  // 4) esquinas a resolución completa y tamaño destino
+  const S = (p: Point): Point => ({ x: p.x * s, y: p.y * s });
+  const [TL, TR, BR, BL] = [S(tl), S(tr), S(br), S(bl)];
+  const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+  const outW = Math.round((dist(TL, TR) + dist(BL, BR)) / 2);
+  const outH = Math.round((dist(TL, BL) + dist(TR, BR)) / 2);
+  if (outW < 80 || outH < 80) return original;
+
+  // 5) homografía destino→origen y remuestreo bilineal
+  const H = homography(
+    [
+      { x: 0, y: 0 },
+      { x: outW, y: 0 },
+      { x: outW, y: outH },
+      { x: 0, y: outH },
+    ],
+    [TL, TR, BR, BL],
+  );
+  if (!H) return original;
+  const out = new Uint8ClampedArray(outW * outH).fill(255);
+  for (let y = 0; y < outH; y++) {
+    for (let x = 0; x < outW; x++) {
+      const d = H[6] * x + H[7] * y + 1;
+      const sx = (H[0] * x + H[1] * y + H[2]) / d;
+      const sy = (H[3] * x + H[4] * y + H[5]) / d;
+      if (sx < 0 || sy < 0 || sx >= w - 1 || sy >= h - 1) continue;
+      const x0 = Math.floor(sx);
+      const y0 = Math.floor(sy);
+      const fx = sx - x0;
+      const fy = sy - y0;
+      const i00 = gray[y0 * w + x0];
+      const i10 = gray[y0 * w + x0 + 1];
+      const i01 = gray[(y0 + 1) * w + x0];
+      const i11 = gray[(y0 + 1) * w + x0 + 1];
+      out[y * outW + x] =
+        i00 * (1 - fx) * (1 - fy) + i10 * fx * (1 - fy) + i01 * (1 - fx) * fy + i11 * fx * fy;
+    }
+  }
+
+  // 6) recorta el canto del papel (sombra del borde)
+  const ix = Math.round(outW * PAPER_INSET);
+  const iy = Math.round(outH * PAPER_INSET);
+  const cw = outW - ix * 2;
+  const ch = outH - iy * 2;
+  if (cw < 60 || ch < 60) return { gray: out, width: outW, height: outH };
+  const cropped = new Uint8ClampedArray(cw * ch);
+  for (let y = 0; y < ch; y++) {
+    cropped.set(out.subarray((y + iy) * outW + ix, (y + iy) * outW + ix + cw), y * cw);
+  }
+  return { gray: cropped, width: cw, height: ch };
+}
+
+interface PaperComponent {
+  area: number;
+  tl: Point;
+  tr: Point;
+  br: Point;
+  bl: Point;
+}
+
+function largestBrightComponent(bright: Uint8Array, w: number, h: number): PaperComponent | null {
+  const visited = new Uint8Array(w * h);
+  const stack: number[] = [];
+  let best: PaperComponent | null = null;
+  for (let i = 0; i < bright.length; i++) {
+    if (!bright[i] || visited[i]) continue;
+    let area = 0;
+    // esquinas por extremos de x+y y x−y (cuadrilátero convexo del papel)
+    let minSum = Infinity;
+    let maxSum = -Infinity;
+    let minDiff = Infinity;
+    let maxDiff = -Infinity;
+    const tl = { x: 0, y: 0 };
+    const tr = { x: 0, y: 0 };
+    const br = { x: 0, y: 0 };
+    const bl = { x: 0, y: 0 };
+    stack.length = 0;
+    stack.push(i);
+    visited[i] = 1;
+    while (stack.length) {
+      const cur = stack.pop() as number;
+      const cx = cur % w;
+      const cy = (cur - cx) / w;
+      area++;
+      const sum = cx + cy;
+      const diff = cx - cy;
+      if (sum < minSum) {
+        minSum = sum;
+        tl.x = cx;
+        tl.y = cy;
+      }
+      if (sum > maxSum) {
+        maxSum = sum;
+        br.x = cx;
+        br.y = cy;
+      }
+      if (diff > maxDiff) {
+        maxDiff = diff;
+        tr.x = cx;
+        tr.y = cy;
+      }
+      if (diff < minDiff) {
+        minDiff = diff;
+        bl.x = cx;
+        bl.y = cy;
+      }
+      if (cx > 0 && bright[cur - 1] && !visited[cur - 1]) {
+        visited[cur - 1] = 1;
+        stack.push(cur - 1);
+      }
+      if (cx < w - 1 && bright[cur + 1] && !visited[cur + 1]) {
+        visited[cur + 1] = 1;
+        stack.push(cur + 1);
+      }
+      if (cy > 0 && bright[cur - w] && !visited[cur - w]) {
+        visited[cur - w] = 1;
+        stack.push(cur - w);
+      }
+      if (cy < h - 1 && bright[cur + w] && !visited[cur + w]) {
+        visited[cur + w] = 1;
+        stack.push(cur + w);
+      }
+    }
+    if (!best || area > best.area) best = { area, tl: { ...tl }, tr: { ...tr }, br: { ...br }, bl: { ...bl } };
+  }
+  return best;
+}
+
+// Homografía DLT de 4 puntos: resuelve H (3x3, h33=1) tal que H·from ≈ to.
+// Devuelve [a,b,c,d,e,f,g,h] con u=(ax+by+c)/(gx+hy+1), v=(dx+ey+f)/(gx+hy+1).
+export function homography(from: Point[], to: Point[]): number[] | null {
+  // sistema 8x8: dos ecuaciones por par de puntos
+  const A: number[][] = [];
+  const b: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const { x, y } = from[i];
+    const { x: u, y: v } = to[i];
+    A.push([x, y, 1, 0, 0, 0, -x * u, -y * u]);
+    b.push(u);
+    A.push([0, 0, 0, x, y, 1, -x * v, -y * v]);
+    b.push(v);
+  }
+  return solveLinear(A, b);
+}
+
+// eliminación gaussiana con pivoteo parcial
+function solveLinear(A: number[][], b: number[]): number[] | null {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let pivot = col;
+    for (let r = col + 1; r < n; r++) {
+      if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+    }
+    if (Math.abs(M[pivot][col]) < 1e-10) return null;
+    [M[col], M[pivot]] = [M[pivot], M[col]];
+    for (let r = col + 1; r < n; r++) {
+      const f = M[r][col] / M[col][col];
+      for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+    }
+  }
+  const x = new Array<number>(n).fill(0);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = M[r][n];
+    for (let c = r + 1; c < n; c++) s -= M[r][c] * x[c];
+    x[r] = s / M[r][r];
+  }
+  return x;
 }
 
 // Papel rayado o cuadriculado: las rayas se binarizan como tinta, puentean

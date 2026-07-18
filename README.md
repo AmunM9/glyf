@@ -15,11 +15,11 @@ npm run build      # build de producción (deployable en Vercel sin config extra
 
 1. Elige idioma (ES/EN) y nombre de la fuente.
 2. Copia la cartilla de la pantalla **a mano** en papel blanco: lapicero/marcador oscuro, letra imprenta, una fila por renglón, en el mismo orden, separando bien cada carácter.
-3. Sube una sola foto (o usa la cámara). La app corrige EXIF, contraste, sombra suave y foto torcida.
-4. Si algún renglón no cuadra, la revisión de glifos te deja reasignar, fusionar, dividir u omitir recortes.
-5. Escribe con tu fuente en la previsualización y descárgala.
+3. Sube una sola foto (o usa la cámara). La app detecta el papel (recorta la mesa u objetos alrededor y endereza la perspectiva), corrige EXIF, contraste, sombra suave, foto torcida y elimina rayas/cuadrículas del cuaderno.
+4. Si algún renglón no cuadra, la revisión de glifos te deja reasignar, fusionar, dividir u omitir recortes, y limpiar imperfecciones con el borrador (clic en el recorte).
+5. Escribe con tu fuente en la previsualización y descárgala. Desde ahí puedes volver a la revisión para retocar.
 
-El `espacio` no se dibuja: se genera sintético. El modo "reutilizar tildes" reduce la fila 7 a `á ñ ü` y compone `é í ó ú Ñ` (menos escritura, calidad dependiente de un solo trazo).
+El `espacio` no se dibuja: se genera sintético.
 
 ## Licencias
 

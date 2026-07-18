@@ -3,6 +3,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Binarized } from '@/lib/preprocess';
 import { splitBox, unionBox, type Box, type SegRow } from '@/lib/segment';
 import type { Copy } from '@/lib/strings';
+import GlyphEraser from './GlyphEraser';
+
+export interface GlyphPick {
+  char: string;
+  rowIndex: number;
+  box: Box;
+}
 
 interface Item {
   box: Box;
@@ -18,19 +25,45 @@ interface Props {
   bin: Binarized;
   segRows: SegRow[];
   expectedRows: string[][];
+  // asignación previa confirmada (para volver desde [04] sin perder el trabajo)
+  initialPicks?: GlyphPick[] | null;
   t: Copy;
-  onConfirm: (picks: { char: string; rowIndex: number; box: Box }[]) => void;
+  onConfirm: (picks: GlyphPick[]) => void;
   onBack: () => void;
 }
 
-export default function GlyphReview({ bin, segRows, expectedRows, t, onConfirm, onBack }: Props) {
+const sameBox = (a: Box, b: Box) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+
+export default function GlyphReview({
+  bin,
+  segRows,
+  expectedRows,
+  initialPicks,
+  t,
+  onConfirm,
+  onBack,
+}: Props) {
   const [rows, setRows] = useState<RowState[]>(() =>
-    segRows.map((sr, ri) => ({
-      // mejor conjetura: asignación posicional
-      items: sr.boxes.map((box, ci) => ({ box, assigned: expectedRows[ri][ci] ?? null })),
-      omitted: [],
-    })),
+    segRows.map((sr, ri) => {
+      const rowPicks = initialPicks?.filter((p) => p.rowIndex === ri) ?? [];
+      const items = sr.boxes.map((box, ci) => {
+        if (rowPicks.length) {
+          const match = rowPicks.find((p) => sameBox(p.box, box));
+          return { box, assigned: match ? match.char : null };
+        }
+        // mejor conjetura: asignación posicional
+        return { box, assigned: expectedRows[ri][ci] ?? null };
+      });
+      const omitted = rowPicks.length
+        ? expectedRows[ri].filter((c) => !items.some((it) => it.assigned === c))
+        : [];
+      return { items, omitted };
+    }),
   );
+  // recorte abierto en el borrador de imperfecciones
+  const [erasing, setErasing] = useState<{ ri: number; ii: number } | null>(null);
+  // fuerza el re-render de los thumbnails tras editar el mask
+  const [maskVersion, setMaskVersion] = useState(0);
 
   const status = useMemo(
     () =>
@@ -88,6 +121,20 @@ export default function GlyphReview({ bin, segRows, expectedRows, t, onConfirm, 
     }));
   }
 
+  function applyErase(newBox: Box | null) {
+    if (!erasing) return;
+    const { ri, ii } = erasing;
+    updateRow(ri, (row) => ({
+      ...row,
+      items: row.items.map((it, i) =>
+        // el recorte quedó vacío tras borrar → se omite; si no, caja ajustada
+        i === ii ? (newBox ? { ...it, box: newBox } : { ...it, assigned: null }) : it,
+      ),
+    }));
+    setMaskVersion((v) => v + 1);
+    setErasing(null);
+  }
+
   function toggleOmitChar(ri: number, char: string) {
     updateRow(ri, (row) => ({
       ...row,
@@ -120,7 +167,15 @@ export default function GlyphReview({ bin, segRows, expectedRows, t, onConfirm, 
           <div className="review-grid">
             {row.items.map((it, ii) => (
               <div className="review-cell" key={`${it.box.x}-${it.box.y}-${ii}`}>
-                <CropThumb bin={bin} box={it.box} />
+                <button
+                  type="button"
+                  className="thumb-button"
+                  title={t.eraserTitle}
+                  aria-label={`${t.eraserTitle} · ${t.rowLabel} ${ri + 1} · ${ii + 1}`}
+                  onClick={() => setErasing({ ri, ii })}
+                >
+                  <CropThumb bin={bin} box={it.box} version={maskVersion} />
+                </button>
                 <select
                   className="cell-select"
                   aria-label={`${t.rowLabel} ${ri + 1} · ${ii + 1}`}
@@ -205,13 +260,22 @@ export default function GlyphReview({ bin, segRows, expectedRows, t, onConfirm, 
           {t.buildFont}
         </button>
       </div>
+      {erasing && (
+        <GlyphEraser
+          bin={bin}
+          box={rows[erasing.ri].items[erasing.ii].box}
+          t={t}
+          onApply={applyErase}
+          onClose={() => setErasing(null)}
+        />
+      )}
     </div>
   );
 }
 
 const THUMB = 56;
 
-function CropThumb({ bin, box }: { bin: Binarized; box: Box }) {
+function CropThumb({ bin, box, version }: { bin: Binarized; box: Box; version: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -243,7 +307,7 @@ function CropThumb({ bin, box }: { bin: Binarized; box: Box }) {
     const dh = Math.max(1, box.h * k);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(raw, (THUMB - dw) / 2, (THUMB - dh) / 2, dw, dh);
-  }, [bin, box]);
+  }, [bin, box, version]);
 
   return <canvas ref={ref} width={THUMB} height={THUMB} className="crop-thumb" aria-hidden="true" />;
 }

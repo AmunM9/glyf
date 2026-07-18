@@ -2,7 +2,7 @@
 // segmentación → deskew → vectorización → fuente válida. `npm run selfcheck`.
 import assert from 'node:assert';
 import type { Binarized } from '../lib/preprocess';
-import { estimateSkew, otsu, removeGridLines, rotateGray } from '../lib/preprocess';
+import { estimateSkew, extractPaper, homography, otsu, removeGridLines, rotateGray } from '../lib/preprocess';
 import { segmentSheet } from '../lib/segment';
 import { buildGlyfFont, type GlyphSource } from '../lib/buildFont';
 import opentype from 'opentype.js';
@@ -67,6 +67,89 @@ async function main(): Promise<void> {
   );
   const iBox = seg[0].boxes[1];
   assert.ok(iBox.h >= 38, `el punto de la i no se agrupó (h=${iBox.h})`);
+
+  // --- homografía: identidad para un mapeo rectángulo→rectángulo trivial ---
+  const idPts = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 80 },
+    { x: 0, y: 80 },
+  ];
+  const Hid = homography(idPts, idPts);
+  assert.ok(Hid, 'homografía identidad no resuelta');
+  assert.ok(
+    Math.abs((Hid as number[])[0] - 1) < 1e-6 && Math.abs((Hid as number[])[2]) < 1e-6,
+    'homografía identidad incorrecta',
+  );
+
+  // --- detección de papel: recorta mesa oscura y esfero, conserva el texto ---
+  {
+    const w = 800;
+    const h = 600;
+    const gray = new Uint8ClampedArray(w * h).fill(50); // mesa oscura
+    // papel claro
+    for (let y = 100; y < 500; y++) for (let x = 150; x < 650; x++) gray[y * w + x] = 235;
+    // "texto" dentro del papel
+    for (let y = 200; y < 220; y++) for (let x = 250; x < 400; x++) gray[y * w + x] = 20;
+    // "esfero" fuera del papel
+    for (let y = 250; y < 400; y++) for (let x = 40; x < 60; x++) gray[y * w + x] = 30;
+    const out = extractPaper(gray, w, h);
+    assert.ok(out.width < w && out.height < h, 'no recortó el papel');
+    // el borde del resultado es papel, no mesa ni esfero
+    let darkBorder = 0;
+    for (let x = 0; x < out.width; x++) {
+      if (out.gray[x] < 100) darkBorder++;
+      if (out.gray[(out.height - 1) * out.width + x] < 100) darkBorder++;
+    }
+    for (let y = 0; y < out.height; y++) {
+      if (out.gray[y * out.width] < 100) darkBorder++;
+      if (out.gray[y * out.width + out.width - 1] < 100) darkBorder++;
+    }
+    assert.strictEqual(darkBorder, 0, `el recorte incluye mesa/esfero (${darkBorder} px oscuros de borde)`);
+    // el "texto" sigue dentro
+    let darkInside = 0;
+    for (let i = 0; i < out.gray.length; i++) if (out.gray[i] < 100) darkInside++;
+    assert.ok(darkInside > 1500, `el texto se perdió al recortar (${darkInside} px)`);
+  }
+
+  // --- detección de papel: foto que ya es puro papel queda intacta ---
+  {
+    const w = 400;
+    const h = 300;
+    const gray = new Uint8ClampedArray(w * h).fill(240);
+    for (let y = 100; y < 120; y++) for (let x = 50; x < 200; x++) gray[y * w + x] = 20;
+    const out = extractPaper(gray, w, h);
+    assert.ok(out.width === w && out.height === h, 'recortó una foto que ya era puro papel');
+  }
+
+  // --- detección de papel: papel rotado se endereza con la homografía ---
+  {
+    const w = 800;
+    const h = 600;
+    const gray = new Uint8ClampedArray(w * h).fill(45);
+    const rad = (8 * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    // papel de 460x320 rotado 8° alrededor del centro
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dx = x - w / 2;
+        const dy = y - h / 2;
+        const u = dx * cos + dy * sin;
+        const v = -dx * sin + dy * cos;
+        if (Math.abs(u) < 230 && Math.abs(v) < 160) gray[y * w + x] = 235;
+      }
+    }
+    const out = extractPaper(gray, w, h);
+    // el warp debe devolver aprox. las dimensiones reales del papel
+    assert.ok(
+      Math.abs(out.width - 460) < 50 && Math.abs(out.height - 320) < 40,
+      `warp de papel rotado devolvió ${out.width}x${out.height}, esperaba ≈460x320`,
+    );
+    let dark = 0;
+    for (let i = 0; i < out.gray.length; i++) if (out.gray[i] < 100) dark++;
+    assert.ok(dark / out.gray.length < 0.02, `el papel enderezado contiene mesa (${dark} px oscuros)`);
+  }
 
   // --- papel cuadriculado: rayas h+v se eliminan sin partir las letras ---
   const rbin = makeBin(600, 400);
@@ -151,7 +234,7 @@ async function main(): Promise<void> {
   for (let i = 0; i < boxes.length; i++) {
     sources.push({ char: chars[i], rowIndex: 0, box: boxes[i], contours: await vectorizeCrop(fbin, boxes[i]) });
   }
-  const { font } = buildGlyfFont(sources, { familyName: 'SelfCheck', reuseAccents: false });
+  const { font } = buildGlyfFont(sources, { familyName: 'SelfCheck' });
 
   const parsed = opentype.parse(font.toArrayBuffer());
   assert.strictEqual(parsed.glyphs.get(0).name, '.notdef', '.notdef en índice 0');

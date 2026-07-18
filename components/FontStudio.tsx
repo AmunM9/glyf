@@ -4,13 +4,13 @@ import type { Font } from 'opentype.js';
 import { getRows, type Lang } from '@/lib/charset';
 import { STR } from '@/lib/strings';
 import { preprocess, type Binarized } from '@/lib/preprocess';
-import { NoInkError, RowCountError, segmentSheet, type Box, type SegRow } from '@/lib/segment';
+import { NoInkError, RowCountError, segmentSheet, type SegRow } from '@/lib/segment';
 import { vectorizeCrop } from '@/lib/vectorize';
 import { buildGlyfFont, type GlyphSource } from '@/lib/buildFont';
 import { downloadFont } from '@/lib/download';
 import ReferenceSheet from './ReferenceSheet';
 import Uploader from './Uploader';
-import GlyphReview from './GlyphReview';
+import GlyphReview, { type GlyphPick } from './GlyphReview';
 import LivePreview from './LivePreview';
 import LaserField from './LaserField';
 
@@ -22,30 +22,23 @@ interface Progress {
   total: number;
 }
 
-interface Pick {
-  char: string;
-  rowIndex: number;
-  box: Box;
-}
-
 const STAGES: Stage[] = ['pre', 'seg', 'vec', 'build'];
 
 export default function FontStudio() {
   const [lang, setLang] = useState<Lang>('es');
   const [familyName, setFamilyName] = useState('MiFuente');
-  const [reuseAccents, setReuseAccents] = useState(false);
   const [step, setStep] = useState(1);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [bin, setBin] = useState<Binarized | null>(null);
   const [segRows, setSegRows] = useState<SegRow[] | null>(null);
+  const [lastPicks, setLastPicks] = useState<GlyphPick[] | null>(null);
   const [font, setFont] = useState<Font | null>(null);
 
   const t = STR[lang];
-  const rows = getRows(lang, reuseAccents);
+  const rows = getRows(lang);
   const nameId = useId();
-  const reuseId = useId();
   const family = familyName.trim() || 'MiFuente';
 
   const stageLabel: Record<Stage, string> = {
@@ -56,8 +49,22 @@ export default function FontStudio() {
   };
 
   const finalize = useCallback(
-    async (b: Binarized, picks: Pick[]) => {
+    async (b: Binarized, picks: GlyphPick[]) => {
       setError(null);
+      // guarda la asignación confirmada y sincroniza las cajas: al volver de
+      // [04] a [03] la revisión se prellena con exactamente lo que se confirmó
+      setLastPicks(picks);
+      setSegRows((prev) =>
+        prev
+          ? prev.map((r, ri) => ({
+              ...r,
+              boxes: picks
+                .filter((p) => p.rowIndex === ri)
+                .map((p) => p.box)
+                .sort((a, b) => a.x - b.x),
+            }))
+          : prev,
+      );
       setProgress({ stage: 'vec', done: 0, total: picks.length });
       try {
         const sources: GlyphSource[] = [];
@@ -70,7 +77,7 @@ export default function FontStudio() {
         }
         setProgress({ stage: 'build', done: 0, total: 1 });
         await new Promise((r) => setTimeout(r, 0));
-        const result = buildGlyfFont(sources, { familyName: family, reuseAccents });
+        const result = buildGlyfFont(sources, { familyName: family });
         setFont(result.font);
         setWarnings(result.warnings);
         setProgress(null);
@@ -81,7 +88,7 @@ export default function FontStudio() {
         setError(t.errGeneric);
       }
     },
-    [family, reuseAccents, t],
+    [family, t],
   );
 
   async function handleFile(file: File) {
@@ -126,6 +133,7 @@ export default function FontStudio() {
     setWarnings([]);
     setBin(null);
     setSegRows(null);
+    setLastPicks(null);
     setFont(null);
     setProgress(null);
   }
@@ -181,22 +189,6 @@ export default function FontStudio() {
               onChange={(e) => setFamilyName(e.target.value)}
             />
           </div>
-          {lang === 'es' && (
-            <div className="field field-inline">
-              <input
-                id={reuseId}
-                type="checkbox"
-                checked={reuseAccents}
-                onChange={(e) => setReuseAccents(e.target.checked)}
-              />
-              <label htmlFor={reuseId} title={t.reuseTip}>
-                {t.reuseLabel}
-                <span className="tip" role="note">
-                  {t.reuseTip}
-                </span>
-              </label>
-            </div>
-          )}
           <button type="button" className="btn btn-primary" onClick={() => setStep(2)}>
             {t.continue_}
           </button>
@@ -253,6 +245,7 @@ export default function FontStudio() {
             bin={bin}
             segRows={segRows}
             expectedRows={rows}
+            initialPicks={lastPicks}
             t={t}
             onBack={() => {
               setError(null);
@@ -290,6 +283,18 @@ export default function FontStudio() {
             <button type="button" className="btn" onClick={() => downloadFont(font, family, 'otf')}>
               {t.downloadOtf}
             </button>
+            {bin && segRows && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setError(null);
+                  setStep(3);
+                }}
+              >
+                {t.backToReview}
+              </button>
+            )}
             <button type="button" className="btn" onClick={restart}>
               {t.restart}
             </button>

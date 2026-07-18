@@ -322,6 +322,29 @@ export function splitBox(bin: Binarized, box: Box): [Box, Box] | null {
   return [left, right];
 }
 
+// Copia la región de un recorte (para el borrador de imperfecciones).
+export function readRegion(bin: Binarized, box: Box): Uint8Array {
+  const region = new Uint8Array(box.w * box.h);
+  for (let dy = 0; dy < box.h; dy++) {
+    for (let dx = 0; dx < box.w; dx++) {
+      region[dy * box.w + dx] = bin.mask[(box.y + dy) * bin.width + (box.x + dx)];
+    }
+  }
+  return region;
+}
+
+// Escribe una región editada de vuelta al mask y devuelve la caja ajustada
+// (null si quedó sin tinta). ponytail: mutación deliberada del buffer — clonar
+// ~3MB de mask por edición no aporta nada; el borrador es la única escritura.
+export function writeRegion(bin: Binarized, box: Box, region: Uint8Array): Box | null {
+  for (let dy = 0; dy < box.h; dy++) {
+    for (let dx = 0; dx < box.w; dx++) {
+      bin.mask[(box.y + dy) * bin.width + (box.x + dx)] = region[dy * box.w + dx];
+    }
+  }
+  return tightenBox(bin, box);
+}
+
 // Recorta filas/columnas vacías del borde de una caja; null si quedó sin tinta.
 export function tightenBox(bin: Binarized, box: Box): Box | null {
   const { mask, width } = bin;

@@ -1,5 +1,5 @@
 // Construcción de la fuente con opentype.js: escala global por altura-x,
-// línea base por renglón, .notdef + space sintéticos y composición de acentos.
+// línea base por renglón y .notdef + space sintéticos.
 import opentype from 'opentype.js';
 import { X_HEIGHT_CHARS, BASELINE_SNAP } from './charset';
 import type { Box } from './segment';
@@ -23,7 +23,6 @@ const DESCENDER = -200;
 const X_HEIGHT_UNITS = 500; // la altura-x mapea a 0.5·em
 const SIDE_BEARING = 60; // ≈0.06·em por lado
 const SPACE_ADVANCE = 300;
-const ACCENT_MIN_Y = X_HEIGHT_UNITS * 0.95; // sobre esto vive un acento/punto de la i
 
 type Cmd = opentype.PathCommand;
 
@@ -32,10 +31,7 @@ interface Built {
   advance: number;
 }
 
-export function buildGlyfFont(
-  sources: GlyphSource[],
-  opts: { familyName: string; reuseAccents: boolean },
-): BuiltFont {
+export function buildGlyfFont(sources: GlyphSource[], opts: { familyName: string }): BuiltFont {
   const warnings: string[] = [];
   const byChar = new Map<string, GlyphSource>();
   for (const s of sources) {
@@ -71,8 +67,6 @@ export function buildGlyfFont(
   for (const src of byChar.values()) {
     built.set(src.char, buildPath(src, baselines.get(src.rowIndex) as number, scale));
   }
-
-  if (opts.reuseAccents) composeAccented(built, warnings);
 
   const glyphs: opentype.Glyph[] = [
     // .notdef obligatorio en índice 0
@@ -129,70 +123,6 @@ function buildPath(src: GlyphSource, baselinePx: number, scale: number): Built {
   return { path, advance: Math.round(box.w * scale + SIDE_BEARING * 2) };
 }
 
-// Modo reutilización: é í ó ú = vocal base + acento extraído de 'á';
-// Ñ = N + tilde extraída de 'ñ'. Los paths se concatenan (más portable que
-// la tabla de glifos compuestos).
-function composeAccented(built: Map<string, Built>, warnings: string[]): void {
-  const acute = extractMark(built.get('á'));
-  if (acute) {
-    for (const [target, base] of [
-      ['é', 'e'],
-      ['í', 'i'],
-      ['ó', 'o'],
-      ['ú', 'u'],
-    ] as const) {
-      const b = built.get(base);
-      if (!b) {
-        warnings.push(`falta '${base}' para componer '${target}'`);
-        continue;
-      }
-      // la í pierde el punto de la i antes de recibir el acento
-      const baseCmds =
-        base === 'i'
-          ? subpaths(b.path.commands).filter((sp) => bboxOf(sp).minY <= ACCENT_MIN_Y).flat()
-          : b.path.commands;
-      built.set(target, composeWith(baseCmds, b.advance, acute));
-    }
-  } else {
-    warnings.push("no pude extraer el acento de 'á'; é í ó ú omitidas");
-  }
-
-  const tilde = extractMark(built.get('ñ'));
-  const n = built.get('N');
-  if (tilde && n) {
-    // sube la tilde por encima de la N mayúscula
-    const capTop = bboxOf(n.path.commands).maxY;
-    const lift = Math.max(0, capTop + 40 - tilde.bbox.minY);
-    built.set('Ñ', composeWith(n.path.commands, n.advance, { ...tilde, dy: lift }));
-  } else if (!built.has('Ñ')) {
-    warnings.push("no pude componer 'Ñ' (falta tilde de 'ñ' o la 'N')");
-  }
-}
-
-interface Mark {
-  cmds: Cmd[];
-  bbox: { minX: number; minY: number; maxX: number; maxY: number };
-  dy?: number;
-}
-
-// El acento/tilde son los subpaths que viven por encima de la altura-x.
-function extractMark(glyph: Built | undefined): Mark | null {
-  if (!glyph) return null;
-  const marks = subpaths(glyph.path.commands).filter((sp) => bboxOf(sp).minY > ACCENT_MIN_Y);
-  if (!marks.length) return null;
-  const cmds = marks.flat();
-  return { cmds, bbox: bboxOf(cmds) };
-}
-
-function composeWith(baseCmds: Cmd[], advance: number, mark: Mark): Built {
-  // centrado horizontal sobre el ancho de avance de la base; misma altura
-  // a la que se escribió sobre la 'á' (comparten altura-x) salvo dy explícito.
-  const dx = advance / 2 - (mark.bbox.minX + mark.bbox.maxX) / 2;
-  const path = new opentype.Path();
-  path.commands = [...cloneCmds(baseCmds, 0, 0), ...cloneCmds(mark.cmds, dx, mark.dy ?? 0)];
-  return { path, advance };
-}
-
 function subpaths(cmds: Cmd[]): Cmd[][] {
   const out: Cmd[][] = [];
   let cur: Cmd[] = [];
@@ -205,45 +135,6 @@ function subpaths(cmds: Cmd[]): Cmd[][] {
   }
   if (cur.length) out.push(cur);
   return out;
-}
-
-function bboxOf(cmds: Cmd[]): { minX: number; minY: number; maxX: number; maxY: number } {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const c of cmds) {
-    const pts: [number, number][] = [];
-    if ('x' in c && typeof c.x === 'number') pts.push([c.x, c.y as number]);
-    if ('x1' in c && typeof c.x1 === 'number') pts.push([c.x1, c.y1 as number]);
-    if ('x2' in c && typeof c.x2 === 'number') pts.push([c.x2, c.y2 as number]);
-    for (const [x, y] of pts) {
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-  return { minX, minY, maxX, maxY };
-}
-
-function cloneCmds(cmds: Cmd[], dx: number, dy: number): Cmd[] {
-  return cmds.map((c) => {
-    const copy = { ...c } as Record<string, unknown> & Cmd;
-    if ('x' in copy && typeof copy.x === 'number') {
-      copy.x += dx;
-      copy.y = (copy.y as number) + dy;
-    }
-    if ('x1' in copy && typeof copy.x1 === 'number') {
-      copy.x1 += dx;
-      copy.y1 = (copy.y1 as number) + dy;
-    }
-    if ('x2' in copy && typeof copy.x2 === 'number') {
-      copy.x2 += dx;
-      copy.y2 = (copy.y2 as number) + dy;
-    }
-    return copy;
-  });
 }
 
 // ponytail: verificación ejecutable tras construir — invariantes de una fuente válida.

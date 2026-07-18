@@ -8,8 +8,6 @@ export interface Copy {
   step4: string;
   langLabel: string;
   fontNameLabel: string;
-  reuseLabel: string;
-  reuseTip: string;
   continue_: string;
   back: string;
   sheetTitle: string;
@@ -41,6 +39,14 @@ export interface Copy {
   downloadTtf: string;
   downloadOtf: string;
   restart: string;
+  backToReview: string;
+  eraserTitle: string;
+  eraserHint: string;
+  brushLabel: string;
+  undo: string;
+  reset: string;
+  cancel: string;
+  apply: string;
   warnings: string;
   errRows: (found: number, want: number) => string;
   errRowShort: (row: number, found: number, want: number) => string;
@@ -58,9 +64,6 @@ export const STR: Record<Lang, Copy> = {
     step4: 'escribe y descarga',
     langLabel: 'idioma de la cartilla',
     fontNameLabel: 'nombre de la fuente',
-    reuseLabel: 'reutilizar tildes',
-    reuseTip:
-      'Reutilizar tildes = escribes menos (solo á ñ ü), pero la calidad de las vocales acentuadas depende de un solo trazo.',
     continue_: 'continuar',
     back: 'volver',
     sheetTitle: 'cartilla de referencia',
@@ -94,6 +97,14 @@ export const STR: Record<Lang, Copy> = {
     downloadTtf: 'descargar .ttf',
     downloadOtf: 'descargar .otf',
     restart: 'empezar de nuevo',
+    backToReview: 'revisar glifos',
+    eraserTitle: 'limpiar carácter',
+    eraserHint: 'Pinta sobre el recorte para borrar imperfecciones (motas, restos de rayas).',
+    brushLabel: 'pincel',
+    undo: 'deshacer',
+    reset: 'restaurar original',
+    cancel: 'cancelar',
+    apply: 'aplicar',
     warnings: 'avisos',
     errRows: (found, want) =>
       `Detecté ${found} renglones y esperaba ${want}. Separa más las filas, evita sombras fuertes y vuelve a intentar.`,
@@ -113,9 +124,6 @@ export const STR: Record<Lang, Copy> = {
     step4: 'type & download',
     langLabel: 'sheet language',
     fontNameLabel: 'font name',
-    reuseLabel: 'reuse accents',
-    reuseTip:
-      'Reusing accents = you write less (only á ñ ü), but accented vowels depend on a single stroke.',
     continue_: 'continue',
     back: 'back',
     sheetTitle: 'reference sheet',
@@ -149,6 +157,14 @@ export const STR: Record<Lang, Copy> = {
     downloadTtf: 'download .ttf',
     downloadOtf: 'download .otf',
     restart: 'start over',
+    backToReview: 'review glyphs',
+    eraserTitle: 'clean character',
+    eraserHint: 'Paint over the crop to erase imperfections (specks, leftover line bits).',
+    brushLabel: 'brush',
+    undo: 'undo',
+    reset: 'restore original',
+    cancel: 'cancel',
+    apply: 'apply',
     warnings: 'warnings',
     errRows: (found, want) =>
       `I detected ${found} text rows but expected ${want}. Separate the rows more, avoid hard shadows and try again.`,

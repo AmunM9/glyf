@@ -9,9 +9,8 @@ const DIGITS = [...'0123456789'];
 const PUNCT_ES = ['.', ',', ':', ';', '!', '?', '¡', '¿', "'", '"', '(', ')', '-'];
 const PUNCT_EN = ['.', ',', ':', ';', '!', '?', "'", '"', '(', ')', '-'];
 const ACCENTS_ES = [...'áéíóúñüÑ'];
-const ACCENTS_REUSE = [...'áñü'];
 
-export function getRows(lang: Lang, reuseAccents: boolean): string[][] {
+export function getRows(lang: Lang): string[][] {
   const rows = [
     UPPER_1,
     UPPER_2,
@@ -20,7 +19,7 @@ export function getRows(lang: Lang, reuseAccents: boolean): string[][] {
     DIGITS,
     lang === 'es' ? PUNCT_ES : PUNCT_EN,
   ];
-  if (lang === 'es') rows.push(reuseAccents ? ACCENTS_REUSE : ACCENTS_ES);
+  if (lang === 'es') rows.push(ACCENTS_ES);
   return rows;
 }
 
@@ -46,12 +45,11 @@ export const BASELINE_SNAP = new Set([
 // ponytail: self-check ejecutable del charset; falla en dev si el orden se rompe.
 if (process.env.NODE_ENV !== 'production') {
   console.assert(
-    getRows('es', false).map((r) => r.length).join() === '13,13,13,13,10,13,8',
+    getRows('es').map((r) => r.length).join() === '13,13,13,13,10,13,8',
     '[glyf] charset es roto',
   );
   console.assert(
-    getRows('en', false).map((r) => r.length).join() === '13,13,13,13,10,11',
+    getRows('en').map((r) => r.length).join() === '13,13,13,13,10,11',
     '[glyf] charset en roto',
   );
-  console.assert(getRows('es', true)[6].join('') === 'áñü', '[glyf] charset reuse roto');
 }
