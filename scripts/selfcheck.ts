@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     for (let ci = 0; ci < 6; ci++) rect(sheet, 40 + ci * 52, 40 + 5 * 60, 10, 10);
     const grayDummy = new Uint8ClampedArray(w * h);
 
-    const ok = fixOrientation(grayDummy, sheet.mask, w, h);
+    const ok = fixOrientation(grayDummy, sheet.mask, w, h, 6);
     assert.ok(
       ok.width === w && ok.mask.every((v, i) => v === sheet.mask[i]),
       'orientación correcta fue modificada',
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
 
     const rot180 = new Uint8Array(w * h);
     for (let i = 0; i < rot180.length; i++) rot180[i] = sheet.mask[rot180.length - 1 - i];
-    const fixed180 = fixOrientation(new Uint8ClampedArray(w * h), rot180, w, h);
+    const fixed180 = fixOrientation(new Uint8ClampedArray(w * h), rot180, w, h, 6);
     assert.ok(
       fixed180.width === w && fixed180.mask.every((v, i) => v === sheet.mask[i]),
       'foto al revés (180°) no se corrigió',
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) rot90[x * h + (h - 1 - y)] = sheet.mask[y * w + x];
     }
-    const fixed90 = fixOrientation(new Uint8ClampedArray(w * h), rot90, h, w);
+    const fixed90 = fixOrientation(new Uint8ClampedArray(w * h), rot90, h, w, 6);
     assert.ok(
       fixed90.width === w && fixed90.height === h,
       `foto de lado (90°) no se enderezó (${fixed90.width}x${fixed90.height})`,

@@ -97,7 +97,7 @@ export default function FontStudio() {
     try {
       setProgress({ stage: 'pre', done: 0, total: 1 });
       await new Promise((r) => setTimeout(r, 30)); // deja pintar el estado
-      const b = await preprocess(file);
+      const b = await preprocess(file, rows.length);
       setProgress({ stage: 'seg', done: 0, total: 1 });
       await new Promise((r) => setTimeout(r, 0));
       const seg = segmentSheet(b, rows.map((r) => r.length));

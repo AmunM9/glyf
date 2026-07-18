@@ -33,7 +33,7 @@ async function loadBitmap(blob: Blob): Promise<ImageBitmap | HTMLImageElement> {
   }
 }
 
-export async function preprocess(blob: Blob): Promise<Binarized> {
+export async function preprocess(blob: Blob, expectedRowCount = 7): Promise<Binarized> {
   const src = await loadBitmap(blob);
   const sw = 'naturalWidth' in src ? src.naturalWidth : src.width;
   const sh = 'naturalHeight' in src ? src.naturalHeight : src.height;
@@ -69,7 +69,7 @@ export async function preprocess(blob: Blob): Promise<Binarized> {
 
   // orientación mal etiquetada por el giroscopio (EXIF incorrecto): se corrige
   // sola usando la estructura de la cartilla
-  const fixed = fixOrientation(gray, mask, pw, ph);
+  const fixed = fixOrientation(gray, mask, pw, ph, expectedRowCount);
   gray = fixed.gray;
   mask = fixed.mask;
   pw = fixed.width;
@@ -112,7 +112,27 @@ export function fixOrientation(
   mask: Uint8Array,
   w: number,
   h: number,
+  expectedRowCount = 7,
 ): Oriented {
+  // nº de bandas de tinta a lo largo de una proyección (con filtro de motas)
+  const bandCount = (proj: Float64Array): number => {
+    let max = 0;
+    for (let i = 0; i < proj.length; i++) if (proj[i] > max) max = proj[i];
+    if (max === 0) return 0;
+    const thr = max * 0.05;
+    const inks: number[] = [];
+    let acc = -1;
+    for (let i = 0; i <= proj.length; i++) {
+      const on = i < proj.length && proj[i] > thr;
+      if (on) acc = (acc < 0 ? 0 : acc) + proj[i];
+      else if (acc >= 0) {
+        inks.push(acc);
+        acc = -1;
+      }
+    }
+    const maxInk = Math.max(...inks, 1);
+    return inks.filter((v) => v > maxInk * 0.05).length;
+  };
   // score de eje: concentración en bandas × fracción de valles vacíos dentro
   // del bloque de tinta (los renglones dejan valles a ~cero; las columnas de
   // letras de distintas filas casi nunca)
@@ -159,7 +179,12 @@ export function fixOrientation(
   const cols = initial.cols;
   let rows = initial.rows;
 
-  if (axisScore(cols) > axisScore(rows) * AXIS_RATIO) {
+  // eje: la cartilla tiene expectedRowCount renglones; el eje correcto produce
+  // ese nº de bandas y el equivocado ~una banda por columna de letras (13).
+  // Decide por cercanía al conteo esperado; el score fino solo desempata.
+  const dRows = Math.abs(bandCount(rows) - expectedRowCount);
+  const dCols = Math.abs(bandCount(cols) - expectedRowCount);
+  if (dCols < dRows || (dCols === dRows && axisScore(cols) > axisScore(rows) * AXIS_RATIO)) {
     out = {
       gray: rotateQuarter(out.gray, out.width, out.height),
       mask: rotateQuarter(out.mask, out.width, out.height),
