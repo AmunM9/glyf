@@ -193,6 +193,9 @@ export default function FontStudio() {
             />
           </div>
           <ReferenceSheet rows={rows} t={t} />
+          <p className="photo-note">
+            <strong>{t.photoNoteLabel}</strong> {t.photoNote}
+          </p>
           <div className="process-zone">
             <LaserField active={progress !== null} />
             {progress ? (

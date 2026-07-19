@@ -247,16 +247,18 @@ main {
   background: var(--bg-primary);
   border: 1px solid var(--bg-tertiary);
   padding: var(--space-2);
-  overflow-x: auto;
+  container-type: inline-size;
+  width: 100%;
+  --sheet-cols: 13;
 }
 
 .sheet-row {
-  display: flex;
-  gap: 0.6rem;
+  display: grid;
+  grid-template-columns: repeat(var(--sheet-cols), minmax(0, 1fr));
   align-items: baseline;
   padding: 0.35rem 0;
   border-bottom: 1px dashed var(--text-muted);
-  white-space: nowrap;
+  width: 100%;
 }
 
 .sheet-row:last-child {
@@ -264,9 +266,18 @@ main {
 }
 
 .sheet-char {
-  font-size: 1.375rem;
-  min-width: 1.4ch;
+  font-size: min(1.375rem, 7.5cqi);
   text-align: center;
+}
+
+.photo-note {
+  margin: 0;
+  color: var(--text-secondary);
+  max-width: 44rem;
+}
+
+.photo-note strong {
+  color: var(--text-primary);
 }
 
 /* ---- zona de proceso / uploader ---- */
@@ -485,6 +496,9 @@ main {
   justify-content: center;
   z-index: 100;
   padding: var(--space-2);
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
 }
 
 .modal {

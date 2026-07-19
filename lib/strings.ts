@@ -10,6 +10,8 @@ export interface Copy {
   back: string;
   sheetTitle: string;
   sheetHint: string;
+  photoNoteLabel: string;
+  photoNote: string;
   dropHint: string;
   browse: string;
   camera: string;
@@ -64,7 +66,10 @@ export const STR: Record<Lang, Copy> = {
     back: 'volver',
     sheetTitle: 'cartilla de referencia',
     sheetHint:
-      'Copia cada letra a mano en una hoja blanca, con lapicero o marcador, igual a como se ve aquí. No agregues nada más. Deja espacio entre letras y entre filas.',
+      'Copia cada letra a mano en una hoja blanca, con lapicero o marcador, igual a como se ve aquí. No agregues nada más. Deja espacio entre letras y entre filas sin que las letras se toquen, para obtener un mejor resultado.',
+    photoNoteLabel: 'Importante:',
+    photoNote:
+      'toma la foto encuadrando solo las filas de letras que escribiste. No incluyas mesa, manos ni bordes de la hoja — deja un margen visible alrededor de las letras.',
     dropHint: 'arrastra tu foto aquí o',
     browse: 'elegir archivo',
     camera: 'usar cámara',
@@ -73,7 +78,7 @@ export const STR: Record<Lang, Copy> = {
     stageVec: 'vectorización',
     stageBuild: 'construcción',
     reviewHint:
-      'El conteo no coincide en las filas marcadas. Asigna, fusiona, divide u omite cada recorte antes de construir la fuente. Toca una letra para borrar manchitas o detalles que no quieras.',
+      'Acá puedes verificar la detección de cada letra o signo. Asigna, fusiona, divide u omite cada recorte antes de construir la fuente. Toca una letra para borrar manchitas o detalles que no quieras.',
     rowLabel: 'fila',
     expected: 'esperados',
     detected: 'detectados',
@@ -122,7 +127,10 @@ export const STR: Record<Lang, Copy> = {
     back: 'back',
     sheetTitle: 'reference sheet',
     sheetHint:
-      'Copy each letter by hand on a white sheet, with a pen or marker, just like you see it here. Do not add anything else. Leave space between letters and between rows.',
+      'Copy each letter by hand on a white sheet, with a pen or marker, just like you see it here. Do not add anything else. Leave space between letters and between rows without the letters touching, for a better result.',
+    photoNoteLabel: 'Important:',
+    photoNote:
+      'frame the photo around the letter rows you wrote only. Keep tables, hands, and paper edges out of the shot — leave a visible margin around the letters.',
     dropHint: 'drag your photo here or',
     browse: 'choose file',
     camera: 'use camera',
@@ -131,7 +139,7 @@ export const STR: Record<Lang, Copy> = {
     stageVec: 'vectorization',
     stageBuild: 'build',
     reviewHint:
-      'Counts do not match in the marked rows. Assign, merge, split or omit each crop before building the font. Tap a letter to erase smudges or unwanted marks.',
+      'Here you can verify the detection of each letter or symbol. Assign, merge, split or omit each crop before building the font. Tap a letter to erase smudges or unwanted marks.',
     rowLabel: 'row',
     expected: 'expected',
     detected: 'detected',

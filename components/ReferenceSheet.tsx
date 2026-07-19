@@ -1,11 +1,14 @@
 'use client';
+import type { CSSProperties } from 'react';
 import type { Copy } from '@/lib/strings';
 
 export default function ReferenceSheet({ rows, t }: { rows: string[][]; t: Copy }) {
+  const maxCols = Math.max(...rows.map((r) => r.length));
+
   return (
     <figure className="sheet" aria-label={t.sheetTitle}>
       <figcaption className="sheet-caption">{t.sheetHint}</figcaption>
-      <div className="sheet-rows">
+      <div className="sheet-rows" style={{ '--sheet-cols': maxCols } as CSSProperties}>
         {rows.map((row, i) => (
           // sin números de fila: cualquier marca dentro de la "hoja" invita a
           // copiarla a mano; los renglones punteados ya marcan la estructura
