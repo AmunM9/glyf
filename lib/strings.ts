@@ -35,6 +35,7 @@ export interface Copy {
   previewPlaceholder: string;
   previewSample: string;
   sizeLabel: string;
+  spacingLabel: string;
   clear: string;
   downloadTtf: string;
   downloadOtf: string;
@@ -94,6 +95,7 @@ export const STR: Record<Lang, Copy> = {
     previewPlaceholder: 'escribe aquí con tu fuente…',
     previewSample: 'El veloz murciélago hindú comía feliz. ¿Cañón? ¡Sí!',
     sizeLabel: 'tamaño',
+    spacingLabel: 'espaciado',
     clear: 'limpiar',
     downloadTtf: 'descargar .ttf',
     downloadOtf: 'descargar .otf',
@@ -155,6 +157,7 @@ export const STR: Record<Lang, Copy> = {
     previewPlaceholder: 'type here with your font…',
     previewSample: 'The quick brown fox jumps over the lazy dog.',
     sizeLabel: 'size',
+    spacingLabel: 'spacing',
     clear: 'clear',
     downloadTtf: 'download .ttf',
     downloadOtf: 'download .otf',

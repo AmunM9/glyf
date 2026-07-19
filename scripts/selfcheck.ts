@@ -310,6 +310,15 @@ async function main(): Promise<void> {
   }
   const { font } = buildGlyfFont(sources, { familyName: 'SelfCheck' });
 
+  const { withTracking } = await import('../lib/fontSpacing');
+  const oAdvance = font.charToGlyph('o').advanceWidth ?? 0;
+  const wider = withTracking(font, 1.25);
+  assert.ok(
+    (wider.charToGlyph('o').advanceWidth ?? 0) > oAdvance,
+    'withTracking debe ampliar advanceWidth',
+  );
+  assert.strictEqual(withTracking(font, 1), font, 'factor 1 devuelve la misma fuente');
+
   const parsed = opentype.parse(font.toArrayBuffer());
   assert.strictEqual(parsed.glyphs.get(0).name, '.notdef', '.notdef en índice 0');
   assert.ok((parsed.charToGlyph(' ').advanceWidth ?? 0) > 0, 'space con avance');

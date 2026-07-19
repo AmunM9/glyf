@@ -12,8 +12,9 @@ import { downloadFont } from '@/lib/download';
 import ReferenceSheet from './ReferenceSheet';
 import Uploader from './Uploader';
 import GlyphReview, { type GlyphPick } from './GlyphReview';
-import LivePreview from './LivePreview';
+import LivePreview, { DEFAULT_TRACKING } from './LivePreview';
 import LaserField from './LaserField';
+import { withTracking } from '@/lib/fontSpacing';
 
 type Stage = 'pre' | 'seg' | 'vec' | 'build';
 
@@ -36,6 +37,7 @@ export default function FontStudio() {
   const [segRows, setSegRows] = useState<SegRow[] | null>(null);
   const [lastPicks, setLastPicks] = useState<GlyphPick[] | null>(null);
   const [font, setFont] = useState<Font | null>(null);
+  const [tracking, setTracking] = useState(DEFAULT_TRACKING);
 
   const t = STR[lang];
   const rows = getRows(lang);
@@ -136,6 +138,7 @@ export default function FontStudio() {
     setSegRows(null);
     setLastPicks(null);
     setFont(null);
+    setTracking(DEFAULT_TRACKING);
     setProgress(null);
   }
 
@@ -258,7 +261,7 @@ export default function FontStudio() {
 
       {step === 3 && font && (
         <section className="panel" aria-label={t.step3}>
-          <LivePreview font={font} t={t} />
+          <LivePreview font={font} tracking={tracking} onTrackingChange={setTracking} t={t} />
           {warnings.length > 0 && (
             <details className="warnings">
               <summary>
@@ -272,10 +275,10 @@ export default function FontStudio() {
             </details>
           )}
           <div className="download-actions">
-            <button type="button" className="btn btn-primary" onClick={() => downloadFont(font, family, 'ttf')}>
+            <button type="button" className="btn btn-primary" onClick={() => downloadFont(withTracking(font, tracking), family, 'ttf')}>
               {t.downloadTtf}
             </button>
-            <button type="button" className="btn" onClick={() => downloadFont(font, family, 'otf')}>
+            <button type="button" className="btn" onClick={() => downloadFont(withTracking(font, tracking), family, 'otf')}>
               {t.downloadOtf}
             </button>
             {bin && segRows && (
